@@ -1,11 +1,10 @@
 import React, { useRef } from 'react';
 import { StoryBoardProvider, useStoryBoard } from '../context/StoryBoardContext';
-import TopBar from '../components/storyboard/TopBar'; // Import the new TopBar
+import TopBar from '../components/storyboard/TopBar';
 import Scene from '../components/storyboard/Scene';
 import Sentence from '../components/storyboard/Sentence';
 import { Button } from '@/components/ui/button';
 import { FaPlus } from 'react-icons/fa';
-import toast from 'react-hot-toast';
 
 // --- MAIN COMPONENT ---
 const StoryBoardInner = () => {
@@ -31,32 +30,10 @@ const StoryBoardInner = () => {
         }
     };
 
-    const handleGroup = () => {
-        dispatch({ type: 'GROUP_SELECTED' });
-        toast.success("Created Scene from selection");
-        lastSelectedIdRef.current = null;
-    };
-
-    const handleCancelSelection = () => {
-        dispatch({ type: 'CLEAR_SELECTION' });
-        lastSelectedIdRef.current = null;
-    };
-
-    const handleDeleteSelection = () => {
-        dispatch({ type: 'DELETE_SELECTED' });
-        toast.success("Items deleted");
-        lastSelectedIdRef.current = null;
-    };
-
     return (
         <div className="min-h-screen bg-slate-100 pb-20">
 
-            {/* Refactored TopBar */}
-            <TopBar
-                handleGroup={handleGroup}
-                handleDeleteSelection={handleDeleteSelection}
-                handleCancelSelection={handleCancelSelection}
-            />
+            <TopBar />
 
             {/* CANVAS */}
             <main className="max-w-4xl mx-auto mt-8 px-4 space-y-4">
@@ -98,7 +75,6 @@ const StoryBoardInner = () => {
                                 onClick={() => dispatch({ type: 'ADD_ITEM', payload: { type: 'scene' } })}>
                                 <FaPlus className="mr-1" /> Scene
                             </Button>
-                            <div className="h-4 w-[1px] bg-slate-200"></div>
                             <Button variant="ghost" size="sm" className="h-6 text-sm text-slate-500 hover:text-blue-600"
                                 onClick={() => dispatch({ type: 'ADD_ITEM', payload: { type: 'sentence' } })}>
                                 <FaPlus className="mr-1" /> Sentence

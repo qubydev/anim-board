@@ -2,14 +2,28 @@ import React, { useMemo } from 'react';
 import { useStoryBoard } from '../../../context/StoryBoardContext';
 import { Button } from '@/components/ui/button';
 import { FaObjectGroup, FaTrash, FaTimes, FaLayerGroup, FaFont, FaClock } from 'react-icons/fa';
-import { calculateStats, formatDuration } from '../../../lib/storyboard-utils';
+import { calculateStats, formatDuration, isSelectionConsecutive } from '../../../lib/storyboard-utils';
 import toast from 'react-hot-toast';
 
 const StatsDisplay = () => {
     const { state, dispatch } = useStoryBoard();
     const stats = useMemo(() => calculateStats(state.items), [state.items]);
+    const selection = state.selection || [];
 
     const handleGroup = () => {
+        const selectedItems = state.items.filter(i => selection.includes(i.id));
+
+        // 1. Validate: Only sentences can be grouped
+        if (selectedItems.some(i => i.type !== 'sentence')) {
+            return toast.error("Can only group standalone sentences.");
+        }
+
+        // 2. Validate: Must be consecutive
+        if (!isSelectionConsecutive(state.items, selection)) {
+            return toast.error("Please select consecutive sentences to group.");
+        }
+
+        // 3. Dispatch and Success
         dispatch({ type: 'GROUP_SELECTED' });
         toast.success("Created Scene");
     };
@@ -22,9 +36,6 @@ const StatsDisplay = () => {
     const handleCancelSelection = () => {
         dispatch({ type: 'CLEAR_SELECTION' });
     };
-
-    // Safely fallback to empty array
-    const selection = state.selection || [];
 
     if (selection.length > 0) {
         return (

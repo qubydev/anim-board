@@ -30,12 +30,10 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
         const newStart = parseFloat(localData.start) || 0;
         const newEnd = parseFloat(localData.end) || 0;
 
-        // 1. Validate proper order
         if (newStart >= newEnd) {
             return toast.error("Start time must be before end time");
         }
 
-        // 2. Validate Overlap
         const conflict = hasOverlap(state.items, newStart, newEnd, sentence.id);
         if (conflict) {
             return toast.error(`Time overlaps with another sentence: "${conflict.text.substring(0, 15)}..." (${conflict.start}s - ${conflict.end}s)`);
@@ -59,6 +57,15 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
         }
     };
 
+    const handleCancel = () => {
+        if (!sentence.text || sentence.text.trim() === '') {
+            handleDelete();
+        } else {
+            setLocalData({ text: sentence.text || '', start: sentence.start || 0, end: sentence.end || 0 });
+            setIsEditing(false);
+        }
+    };
+
     const handleCheckboxClick = (e) => {
         if (onSelectionChange && !isNested) {
             onSelectionChange(sentence.id, index, e.nativeEvent.shiftKey);
@@ -73,7 +80,7 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
     return (
         <div className={`${baseClasses} ${!isNested ? topLevelClasses : nestedClasses} ${isSelected ? selectedClasses : ''}`}>
             {!isNested && !isEditing && (
-                <div className="pt-1">
+                <div className="pt-2">
                     <span onClickCapture={handleCheckboxClick}>
                         <Checkbox checked={isSelected} onCheckedChange={() => { }} className="cursor-pointer" />
                     </span>
@@ -83,17 +90,21 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
             <div className="flex-grow w-full">
                 {!isEditing ? (
                     <div className="flex items-start gap-2">
-                        <div
-                            onClick={() => setIsEditing(true)}
-                            className="flex-1 cursor-pointer text-slate-700 p-1 rounded min-h-[24px] border border-transparent hover:border-slate-200"
-                        >
-                            <span className="leading-relaxed">{sentence.text || <span className="text-slate-400 italic">Empty sentence...</span>}</span>
-                            <span className="ml-2 text-[10px] font-mono text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">
-                                {sentence.start}s - {sentence.end}s
-                            </span>
+                        <div className="flex-1 text-slate-700 py-1">
+                            {/* Timestamp moved to the top */}
+                            <div className="mb-1.5">
+                                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                    {sentence.start}s - {sentence.end}s
+                                </span>
+                            </div>
+
+                            {/* Text below the timestamp */}
+                            <div className="leading-relaxed text-sm">
+                                {sentence.text || <span className="text-slate-400 italic">Empty sentence...</span>}
+                            </div>
                         </div>
 
-                        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-1 mt-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-500" onClick={() => setIsEditing(true)}>
                                 <FaPen size={12} />
                             </Button>
@@ -127,6 +138,9 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
                                 />
                             </div>
                             <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" className="h-8 text-xs text-slate-500 hover:bg-slate-200" onClick={handleCancel}>
+                                    Cancel
+                                </Button>
                                 <Button size="sm" variant="ghost" className="h-8 text-xs text-red-500 hover:bg-red-50" onClick={handleDelete}>
                                     <FaTrash className="mr-1" /> Delete
                                 </Button>

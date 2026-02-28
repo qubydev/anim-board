@@ -34,7 +34,10 @@ const GeneratorControls = () => {
             const res = await fetch(`${backendUrl}/api/generate-scenes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    title: state.title || 'Untitled',
+                    lines: payload
+                })
             });
 
             if (!res.ok) {
@@ -72,12 +75,9 @@ const GeneratorControls = () => {
         }
 
         setIsGeneratingPrompts(true);
-        const toastId = toast.loading("Starting prompt generation...");
+        const toastId = toast.loading("Generating image prompts...");
 
         try {
-            const characterContext = charData.enabled ? charData.text : null;
-            const styleContext = styleData.enabled ? styleData.text : null;
-
             let previousContext = null;
             let scenesProcessed = 0;
             let scenesSkipped = 0;
@@ -90,12 +90,7 @@ const GeneratorControls = () => {
                 if (item.prompt && item.prompt.trim().length > 0) {
                     previousContext = item.prompt;
                     scenesSkipped++;
-                    toast(`Skipping Scene ${sceneIndex} (Prompt exists)`, {
-                        icon: '⏭️',
-                        duration: 2000,
-                        position: 'bottom-right',
-                        style: { fontSize: '12px' }
-                    });
+                    console.warn(`Skipping Scene ${sceneIndex} (Prompt exists)`);
                     continue;
                 }
 
@@ -106,10 +101,9 @@ const GeneratorControls = () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        scene_sentences: sceneText,
-                        previous_scene_context: previousContext,
-                        character_description: characterContext,
-                        style: styleContext
+                        scene_lines: sceneText,
+                        character_description: charData.enabled ? charData.text : null,
+                        animation_style: styleData.enabled ? styleData.text : null
                     })
                 });
 

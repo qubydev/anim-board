@@ -21,7 +21,7 @@ const TopBar = () => {
                             value={state.title}
                             onChange={(e) => dispatch({ type: 'UPDATE_TITLE', payload: e.target.value })}
                             className="font-bold text-lg border-transparent focus:border-slate-300 hover:border-slate-200 w-full sm:w-80 px-2 h-10"
-                            placeholder="Untitled Storyboard"
+                            placeholder="Untitled"
                         />
                     </div>
 

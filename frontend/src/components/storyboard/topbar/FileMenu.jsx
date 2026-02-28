@@ -3,6 +3,7 @@ import { useStoryBoard } from '../../../context/StoryBoardContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { FaDownload, FaUpload, FaEraser, FaSpinner } from 'react-icons/fa';
+import { parseTranscript } from '../../../lib/storyboard-utils';
 import toast from 'react-hot-toast';
 
 const FileMenu = () => {
@@ -37,7 +38,27 @@ const FileMenu = () => {
             }
         };
         reader.readAsText(file);
-        e.target.value = null;
+    };
+
+    const handleTranscriptImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const parsedSentences = parseTranscript(event.target.result, file.name);
+                if (parsedSentences.length > 0) {
+                    dispatch({ type: 'IMPORT_TRANSCRIPT', payload: parsedSentences });
+                    toast.success(`Imported ${parsedSentences.length} sentences`);
+                } else {
+                    throw new Error("No readable sentences found in file");
+                }
+            } catch (err) {
+                toast.error(err.message);
+            }
+        };
+        reader.readAsText(file);
     };
 
     const handleClearConfirm = () => {
@@ -56,9 +77,16 @@ const FileMenu = () => {
             </Button>
 
             <Button variant="ghost" size="sm" asChild className="h-9 text-sm px-2 sm:px-3">
-                <label className="cursor-pointer">
+                <label className="cursor-pointer" title="Import Anim-Board Project">
                     <FaUpload className="mr-2" /> Board
-                    <input type="file" hidden onChange={handleProjectImport} accept=".json" />
+                    <input type="file" hidden onChange={handleProjectImport} onClick={(e) => (e.target.value = null)} accept=".json" />
+                </label>
+            </Button>
+
+            <Button variant="ghost" size="sm" asChild className="h-9 text-sm px-2 sm:px-3 text-slate-600 hover:text-blue-600 hover:bg-blue-50">
+                <label className="cursor-pointer" title="Import SRT or VTT Transcript">
+                    <FaUpload className="mr-2" /> Transcript
+                    <input type="file" hidden onChange={handleTranscriptImport} onClick={(e) => (e.target.value = null)} accept=".srt,.vtt" />
                 </label>
             </Button>
 

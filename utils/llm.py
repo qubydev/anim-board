@@ -15,85 +15,95 @@ model = ChatGroq(
 
 # Models
 class ScenesWithIndexGroups(BaseModel):
-    scenes: list[list[int]] = Field(..., description="A list of scenes, where each scene is a list of sentence indices.")
+    scenes: list[list[int]] = Field(..., description="list of list of line indices, groupped into scenes.")
 
 class SceneImagePrompt(BaseModel):
-    prompt: str = Field(..., description="A descriptive prompt for generating an image based on the scene sentences.")
+    prompt: str = Field(..., description="A descriptive prompt for generating an image based on the scene lines.")
+
 
 # Prompts
-GENERATE_SCENES_SYSTEM = """You are a creative documentry writer. A documentry with all the sentences is given with their indices and duration. Your task is to group these sentences into small scenes and return a list of list of sentence indices.
+GENERATE_SCENES_SYSTEM = """You are a visual planner for an AI video generation pipeline. Lines from a script with their indices are provided to you. Your task is to group these lines into short scenes.
+
+CRITICAL CONSTRAINT: ONE SCENE = ONE IMAGE
+- Every scene you create will be represented by ONE single image in the video.
+- Therefore, you CANNOT group lines together which does not fit into a single scene image.
+- Because of this, most scenes will probably contain 1 to 2 lines.
 
 RULES:
-- Each scene should be approximately 5-8s long.
-- Return only the list of list of sentence indices, without any additional text.
-- Do not miss or repeate any index.
+- Return ONLY a valid JSON list of lists of line indices (e.g., [[0], [1, 2], [3], [4]]). No other text, formatting, or markdown blocks.
+- Do not miss or repeat any index.
+
+EXAMPLE OF EXPECTED PACING:
+Text: 
+0. The neon signs of Neo-Tokyo flicker in the heavy rain.
+1. A cyber-thief drops silently from the glass rooftop.
+2. She lands perfectly balanced on the rusted fire escape.
+3. A security drone sweeps its red targeting laser across the dark alley.
+4. She presses her back flat against the cold brick wall to hide.
+5. The drone hovers for a second before flying away.
+
+Correct Output for Example:
+[[0], [1, 2], [3], [4], [5]]
 """
 
-GENERATE_SCENES_USER = """Please generate scenes for the following documentry:
+GENERATE_SCENES_USER = """Please generate scenes for the following script:
 
 TITLE: {title}
 
-SENTENCES:
-{formatted_sentences}
+LINES:
+{formatted_lines}
 """
 
-GENERATE_IMAGE_PROMPT_SYSTEM = """You are a creative AI image prompt engineer.
+# 2D animation style focused
+GENERATE_IMAGE_PROMPT_SYSTEM = """You are a creative AI image prompt engineer specializing in 2D animation style. Some lines from a animation script and some other optional details are provided to you, your task is to generate a descriptive image-generation prompt that represents the scene following the given details. This prompt will later be used to generate an image using a text-to-image AI model.
 
-Your task is to generate a descriptive image-generation prompt based on the provided scene and other input.
-
-You may be given:
-- Scene (always present)
-- A character description (optional)
-- A visual style (optional)
-- Previous scene context (optional)
+POSSIBLE INPUTS:
+- **SCENE LINES** (REQUIRED): A few lines from the script that describe the scene.
+- **CHARACTER DESCRIPTION** (OPTIONAL): A visual description of the main character(s) in the scene.
+- **ANIMATION STYLE** (OPTIONAL): A specific 2D animation style to apply.
 
 RULES:
-- Faithfully represent the given scene.
-- If a character description is provided, incorporate it clearly.
-- If a visual style is provided, apply it consistently.
-- If previous scene context is provided, ensure visual continuity.
+- Be creative and descriptive in your prompt to ensure the generated image captures the essence of the scene.
 """
 
 def GENERATE_IMAGE_PROMPT_USER(
-    scene_sentences: str,
-    previous_scene_context: str | None = None,
-    character_description: str | None = None,
-    style: str | None = None,
-) -> str:
-    prompt = f"Generate an image prompt for the following scene:\n\nScene Sentences:\n{scene_sentences}\n\n"
+        scene_lines: str,
+        character_description: str | None = None,
+        animation_style: str | None = None,
+    ) -> str:
+    prompt = f"Generate an image prompt using the following inputs:\n\n**SCENE LINES:**\n{scene_lines}"
     if character_description:
-        prompt += f"Character Description:\n{character_description}\n\n"
-    if style:
-        prompt += f"Visual Style:\n{style}\n\n"
-    if previous_scene_context:
-        prompt += f"Previous Scene Context:\n{previous_scene_context}\n\n"
+        prompt += f"\n\n**CHARACTER DESCRIPTION:**\n{character_description}"
+    if animation_style:
+        prompt += f"\n\n**ANIMATION STYLE:**\n{animation_style}"
+    
     return prompt
 
+
 # Functions 
-def generate_scenes(sentences: list[dict]) -> list[list[int]]:
+def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
     structured_model = model.with_structured_output(ScenesWithIndexGroups)
-    formatted_sentences = "\n".join([f"{i}: \"{sentence['text']}\" ({round(sentence['duration'], 2)}s)" for i, sentence in enumerate(sentences)])
+    formatted_lines = "\n".join([f"{i}: \"{line['text']}\"" for i, line in enumerate(lines)])
+
     response = structured_model.invoke([
         {"role": "system", "content": GENERATE_SCENES_SYSTEM},
-        {"role": "user", "content": GENERATE_SCENES_USER.format(title="Documentry Title", formatted_sentences=formatted_sentences)}
+        {"role": "user", "content": GENERATE_SCENES_USER.format(title=title, formatted_lines=formatted_lines)}
     ])
     return response.scenes
 
 def generate_image_prompt(
-        scene_sentences: str,
-        previous_scene_context: str | None = None,
+        scene_lines: str,
         character_description: str | None = None,
-        style: str | None = None
+        animation_style: str | None = None
     ) -> str:
     structured_model = model.with_structured_output(SceneImagePrompt)
     response = structured_model.invoke([
         {"role": "system", "content": GENERATE_IMAGE_PROMPT_SYSTEM},
         {"role": "user", "content": GENERATE_IMAGE_PROMPT_USER(
-            scene_sentences=scene_sentences,
-            previous_scene_context=previous_scene_context,
+            scene_lines=scene_lines,
             character_description=character_description,
-            style=style,
-        ).strip()}
+            animation_style=animation_style
+        )}
     ])
     return response.prompt
     

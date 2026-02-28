@@ -107,10 +107,9 @@ const Scene = ({ scene, index }) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    scene_sentences: sceneText,
-                    previous_scene_context: previousContext,
+                    scene_lines: sceneText,
                     character_description: charData.enabled ? charData.text : null,
-                    style: styleData.enabled ? styleData.text : null
+                    animation_style: styleData.enabled ? styleData.text : null
                 })
             });
 

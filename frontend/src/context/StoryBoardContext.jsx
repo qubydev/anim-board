@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useState } from 'react';
 import { getInitialData, generateId, loadFromStorage, saveToStorage, duplicateSceneData, getMaxEndTime } from '../lib/storyboard-utils';
-import toast from 'react-hot-toast';
 
 const StoryBoardContext = createContext();
 
@@ -54,13 +53,20 @@ const reducer = (state, action) => {
         }
 
         case 'GROUP_SELECTED': {
-            const selectedItems = state.items.filter(i => currentSelection.includes(i.id));
+            const selectedIndices = [];
+            state.items.forEach((item, index) => {
+                if (currentSelection.includes(item.id)) selectedIndices.push(index);
+            });
 
-            if (selectedItems.some(i => i.type !== 'sentence')) {
-                toast.error("Can only group Sentences");
-                return state;
+            if (selectedIndices.length === 0) return state;
+
+            // Silent fail fallback (Real validation happens in the component now)
+            for (let i = 1; i < selectedIndices.length; i++) {
+                if (selectedIndices[i] !== selectedIndices[i - 1] + 1) return state;
             }
-            if (selectedItems.length === 0) return state;
+
+            const selectedItems = selectedIndices.map(idx => state.items[idx]);
+            if (selectedItems.some(i => i.type !== 'sentence')) return state;
 
             const newScene = {
                 type: 'scene',
@@ -70,20 +76,10 @@ const reducer = (state, action) => {
                 sentences: selectedItems.map(s => ({ ...s }))
             };
 
-            let inserted = false;
-            const finalItems = state.items.reduce((acc, item) => {
-                if (currentSelection.includes(item.id)) {
-                    if (!inserted) {
-                        acc.push(newScene);
-                        inserted = true;
-                    }
-                } else {
-                    acc.push(item);
-                }
-                return acc;
-            }, []);
+            const newItems = [...state.items];
+            newItems.splice(selectedIndices[0], selectedIndices.length, newScene);
 
-            return { ...state, items: finalItems, selection: [], isDirty: true };
+            return { ...state, items: newItems, selection: [], isDirty: true };
         }
 
         case 'APPLY_AUTO_GROUPING': {
@@ -214,6 +210,17 @@ const reducer = (state, action) => {
                 return item;
             };
             return { ...state, items: state.items.map(updateItem), isDirty: true };
+        }
+
+        case 'IMPORT_TRANSCRIPT': {
+            const newItems = action.payload.map(s => ({
+                type: 'sentence',
+                id: generateId(),
+                text: s.text,
+                start: s.start,
+                end: s.end
+            }));
+            return { ...state, items: newItems, selection: [], isDirty: true };
         }
 
         case 'MARK_SAVED':
