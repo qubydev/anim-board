@@ -64,6 +64,8 @@ POSSIBLE INPUTS:
 
 RULES:
 - Be creative and descriptive in your prompt to ensure the generated image captures the essence of the scene.
+- It is not mendatory to show the character in the scene, you may or may not contain the character based on the provided inputs.
+- Do not add any instruction to add any type of caption text in the output image.
 """
 
 def GENERATE_IMAGE_PROMPT_USER(
