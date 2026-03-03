@@ -42,7 +42,6 @@ const reducer = (state, action) => {
         case 'CLEAR_BOARD':
             return { ...getInitialData(), characters: [], isDirty: true };
 
-        // --- CHARACTER ACTIONS ---
         case 'SET_CHARACTERS':
             return { ...state, characters: action.payload, isDirty: true };
 
@@ -53,6 +52,7 @@ const reducer = (state, action) => {
 
             const newChar = {
                 id: `char_${shortId}_${randomHash}`,
+                name: 'New Character',
                 description: '',
                 image: null,
                 mediaId: null
@@ -80,7 +80,6 @@ const reducer = (state, action) => {
                 characters: (state.characters || []).filter(c => c.id !== action.payload),
                 isDirty: true
             };
-        // -------------------------
 
         case 'CLEAN_ALL_IMAGES':
             return {
