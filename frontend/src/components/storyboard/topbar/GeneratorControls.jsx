@@ -134,9 +134,11 @@ const GeneratorControls = () => {
 
         const instData = getStorageItem('sb_global_instructions');
 
-        const charactersPayload = (state.characters || []).length > 0 ? state.characters.map(c => ({
+        const activeCharacters = (state.characters || []).filter(c => c.mediaId);
+        // Prompt generation only needs name and description
+        const charactersPayload = activeCharacters.length > 0 ? activeCharacters.map(c => ({
             name: c.name || 'Unknown Character',
-            description: c.description || 'Character'
+            description: c.description || 'character'
         })) : null;
 
         setIsGeneratingPrompts(true);
@@ -149,30 +151,26 @@ const GeneratorControls = () => {
         try {
             let scenesProcessed = 0;
             let scenesSkipped = 0;
-            let lastPrompt = null;
-            let lastSceneText = null;
+            let previousScenesList = [];
 
             for (let i = 0; i < scenesToProcess.length; i++) {
                 if (signal.aborted) break;
                 const item = scenesToProcess[i];
+                const sceneText = item.sentences.map(s => s.text).join(' ').trim();
 
                 if (item.prompt && item.prompt.trim().length > 0) {
                     scenesSkipped++;
-                    lastPrompt = item.prompt;
-                    lastSceneText = item.sentences.map(s => s.text).join(' ').trim();
+                    if (sceneText) {
+                        previousScenesList.push({ scene_lines: sceneText, prompt: item.prompt });
+                        if (previousScenesList.length > 10) previousScenesList.shift();
+                    }
                     continue;
                 }
 
-                const sceneText = item.sentences.map(s => s.text).join(' ').trim();
                 if (!sceneText) {
                     scenesSkipped++;
                     continue;
                 }
-
-                const previousScenePayload = lastPrompt ? {
-                    prompt: lastPrompt,
-                    lines: lastSceneText
-                } : null;
 
                 try {
                     dispatch({ type: 'UPDATE_SCENE_META', payload: { id: item.id, field: 'promptGenStatus', value: 'generating' } });
@@ -183,9 +181,9 @@ const GeneratorControls = () => {
                         body: JSON.stringify({
                             title: state.title || 'Untitled',
                             scene_lines: sceneText,
-                            previous_scene: previousScenePayload,
-                            characters: charactersPayload,
-                            instructions: instData.text ? instData.text : null
+                            instructions: instData.text ? instData.text : null,
+                            previous_scenes: previousScenesList.length > 0 ? previousScenesList : null,
+                            characters: charactersPayload
                         }),
                         signal
                     });
@@ -199,12 +197,12 @@ const GeneratorControls = () => {
                     if (data.prompt) {
                         const newMap = { ...(item.characterMap || {}) };
                         const matches = data.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
-                        
+
                         matches.forEach(tag => {
                             if (tag !== '[CHX]') {
                                 const num = parseInt(tag.replace(/\D/g, ''), 10) - 1;
-                                if (state.characters && state.characters[num]) {
-                                    newMap[tag] = state.characters[num].id;
+                                if (activeCharacters[num]) {
+                                    newMap[tag] = activeCharacters[num].id;
                                 }
                             }
                         });
@@ -221,8 +219,9 @@ const GeneratorControls = () => {
                             }
                         });
                         scenesProcessed++;
-                        lastPrompt = data.prompt;
-                        lastSceneText = sceneText;
+
+                        previousScenesList.push({ scene_lines: sceneText, prompt: data.prompt });
+                        if (previousScenesList.length > 10) previousScenesList.shift();
                     }
                 } catch (e) {
                     if (e.name !== 'AbortError') {
@@ -326,7 +325,6 @@ const GeneratorControls = () => {
 
                 const promise = (async () => {
                     try {
-                        // --- Bulk Validation Hooks ---
                         if (scene.prompt.includes('[CHX]')) {
                             throw new Error(`Prompt contains unlinked character [CHX]`);
                         }
@@ -339,11 +337,9 @@ const GeneratorControls = () => {
                                 throw new Error(`Linked character "${character.name || tag}" is missing an uploaded image.`);
                             }
                         }
-                        // -----------------------------
 
                         dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, field: 'imageGenStatus', value: 'generating' } });
 
-                        // Re-resolve active subject IDs based on current mapping
                         const subjectIds = promptTags.map(tag => {
                             const charId = scene.characterMap?.[tag];
                             const character = allStateCharacters.find(c => c.id === charId);
@@ -358,10 +354,11 @@ const GeneratorControls = () => {
 
                         if (subjectIds.length > 0) {
                             endpoint = `${backendUrl}/api/generate-image-chars`;
+                            // Now correctly sending name, description, and mediaId
                             reqBody.characters = subjectIds.map(id => {
                                 const c = allStateCharacters.find(ch => ch.mediaId === id);
                                 return {
-                                    name: c ? (c.name || 'Character') : 'Character',
+                                    name: c ? (c.name || 'Unknown Character') : 'Unknown Character',
                                     description: c ? (c.description || 'Character') : 'Character',
                                     mediaId: id
                                 };

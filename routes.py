@@ -13,13 +13,13 @@ class CharacterInput(BaseModel):
     description: str = Field(..., min_length=1, strip_whitespace=True)
 
 class Scene(BaseModel):
-    lines: str = Field(..., min_length=1, strip_whitespace=True)
+    scene_lines: str = Field(..., min_length=1, strip_whitespace=True)
     prompt: str = Field(..., min_length=1, strip_whitespace=True)
 
 class ImagePromptRequest(BaseModel):
     title: str
     scene_lines: str
-    previous_scene: Optional[Scene] = None
+    previous_scenes: Optional[List[Scene]] = None
     characters: Optional[List[CharacterInput]] = None
     instructions: Optional[str] = None
 
@@ -62,7 +62,7 @@ async def _generate_image_prompt(request: ImagePromptRequest):
     data = generate_image_prompt(
         title=request.title,
         scene_lines=request.scene_lines,
-        previous_scene=request.previous_scene,
+        previous_scenes=request.previous_scenes,
         characters=request.characters,
         instructions=request.instructions,
     )
