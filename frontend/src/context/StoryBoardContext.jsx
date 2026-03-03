@@ -74,12 +74,38 @@ const reducer = (state, action) => {
                 isDirty: true
             };
 
-        case 'DELETE_CHARACTER':
+        case 'DELETE_CHARACTER': {
+            const deletedId = action.payload;
+            const remainingCharacters = (state.characters || []).filter(c => c.id !== deletedId);
+
+            const updatedItems = state.items.map(item => {
+                if (item.type === 'scene') {
+                    let newPrompt = item.prompt || "";
+                    let newMap = { ...(item.characterMap || {}) };
+                    let changed = false;
+
+                    Object.keys(newMap).forEach(tag => {
+                        if (newMap[tag] === deletedId) {
+                            newPrompt = newPrompt.split(tag).join('[CHX]');
+                            delete newMap[tag];
+                            changed = true;
+                        }
+                    });
+
+                    if (changed) {
+                        return { ...item, prompt: newPrompt, characterMap: newMap };
+                    }
+                }
+                return item;
+            });
+
             return {
                 ...state,
-                characters: (state.characters || []).filter(c => c.id !== action.payload),
+                characters: remainingCharacters,
+                items: updatedItems,
                 isDirty: true
             };
+        }
 
         case 'CLEAN_ALL_IMAGES':
             return {
@@ -94,7 +120,7 @@ const reducer = (state, action) => {
             return {
                 ...state,
                 items: state.items.map(item =>
-                    item.type === 'scene' ? { ...item, prompt: "", promptGenStatus: null, subjectMediaIds: [] } : item
+                    item.type === 'scene' ? { ...item, prompt: "", promptGenStatus: null, subjectMediaIds: [], characterMap: {} } : item
                 ),
                 isDirty: true
             };
@@ -157,6 +183,7 @@ const reducer = (state, action) => {
                 image: null,
                 prompt: "",
                 subjectMediaIds: [],
+                characterMap: {},
                 sentences: selectedItems.map(s => ({ ...s }))
             };
 
@@ -220,6 +247,7 @@ const reducer = (state, action) => {
                     image: null,
                     prompt: "",
                     subjectMediaIds: [],
+                    characterMap: {},
                     sentences: groupSentences.map(s => ({ ...s }))
                 };
             }).filter(Boolean);
@@ -248,7 +276,7 @@ const reducer = (state, action) => {
             const endStr = parseFloat((startStr + 1.0).toFixed(2));
 
             const newItem = action.payload.type === 'scene'
-                ? { type: 'scene', id: generateId(), sentences: [], image: null, prompt: "", subjectMediaIds: [] }
+                ? { type: 'scene', id: generateId(), sentences: [], image: null, prompt: "", subjectMediaIds: [], characterMap: {} }
                 : { type: 'sentence', id: generateId(), text: "", start: startStr, end: endStr };
 
             return { ...state, items: [...state.items, newItem], isDirty: true };

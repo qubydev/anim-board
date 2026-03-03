@@ -9,15 +9,15 @@ from enum import Enum
 router = APIRouter()
 
 class CharacterInput(BaseModel):
-    mediaId: str
+    name: str
     description: str
 
 class ImagePromptRequest(BaseModel):
     title: str
     scene_lines: str
-    instructions: Optional[str] = None
-    previous_prompt: Optional[str] = None
+    previous_scene: Optional[dict] = None
     characters: Optional[List[CharacterInput]] = None
+    instructions: Optional[str] = None
 
 class GenerateScenesRequest(BaseModel):
     title: str
@@ -53,9 +53,9 @@ async def _generate_image_prompt(request: ImagePromptRequest):
     data = generate_image_prompt(
         title=request.title,
         scene_lines=request.scene_lines,
+        previous_scene=request.previous_scene,
+        characters=request.characters,
         instructions=request.instructions,
-        previous_prompt=request.previous_prompt,
-        characters=request.characters
     )
     return JSONResponse(data)
 

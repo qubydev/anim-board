@@ -191,13 +191,27 @@ const GeneratorControls = () => {
 
                     const data = await res.json();
                     if (data.prompt) {
+                        // Dynamically build the mapping for bulk auto-generated prompts
+                        const newMap = { ...(item.characterMap || {}) };
+                        const matches = data.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
+
+                        matches.forEach(tag => {
+                            if (tag !== '[CHX]') {
+                                const num = parseInt(tag.replace(/\D/g, ''), 10) - 1;
+                                if (activeCharacters[num]) {
+                                    newMap[tag] = activeCharacters[num].id;
+                                }
+                            }
+                        });
+
                         dispatch({
                             type: 'UPDATE_SCENE_META',
                             payload: {
                                 id: item.id,
                                 updates: {
                                     prompt: data.prompt,
-                                    subjectMediaIds: data.subject_media_ids || []
+                                    subjectMediaIds: data.subject_media_ids || [],
+                                    characterMap: newMap
                                 }
                             }
                         });
@@ -306,9 +320,30 @@ const GeneratorControls = () => {
 
                 const promise = (async () => {
                     try {
+                        // --- Bulk Validation Hooks ---
+                        if (scene.prompt.includes('[CHX]')) {
+                            throw new Error(`Prompt contains unlinked character [CHX]`);
+                        }
+
+                        const promptTags = scene.prompt.match(/\[CH(?:\d+)\]/g) || [];
+                        for (const tag of promptTags) {
+                            const charId = scene.characterMap?.[tag];
+                            const character = allStateCharacters.find(c => c.id === charId);
+                            if (character && !character.mediaId) {
+                                throw new Error(`Linked character "${character.name || tag}" is missing an uploaded image.`);
+                            }
+                        }
+                        // -----------------------------
+
                         dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, field: 'imageGenStatus', value: 'generating' } });
 
-                        const subjectIds = scene.subjectMediaIds || [];
+                        // Re-resolve active subject IDs based on current mapping
+                        const subjectIds = promptTags.map(tag => {
+                            const charId = scene.characterMap?.[tag];
+                            const character = allStateCharacters.find(c => c.id === charId);
+                            return character ? character.mediaId : null;
+                        }).filter(Boolean);
+
                         let endpoint = `${backendUrl}/api/generate-image`;
                         let reqBody = {
                             prompt: scene.prompt,

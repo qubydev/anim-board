@@ -6,14 +6,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogTrigger, DialogTitle } from '@/components/ui/dialog';
-import { FaImage, FaMagic, FaTrash, FaUpload, FaDownload, FaPlus, FaCopy, FaPen, FaUnlink, FaEraser, FaExpand, FaSpinner } from 'react-icons/fa';
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader } from '@/components/ui/dialog';
+import { FaImage, FaMagic, FaTrash, FaUpload, FaDownload, FaPlus, FaCopy, FaPen, FaUnlink, FaEraser, FaExpand, FaSpinner, FaCheck, FaEdit } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 
 const Scene = ({ scene, index }) => {
     const { state, dispatch } = useStoryBoard();
     const [isGeneratingImg, setIsGeneratingImg] = useState(false);
     const [isGeneratingTxt, setIsGeneratingTxt] = useState(false);
+
+    // Custom edit state
+    const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+    const [localPrompt, setLocalPrompt] = useState(scene.prompt || "");
+    const [linkDialog, setLinkDialog] = useState(null); // stores the current tag we want to edit: e.g., "[CH1]"
 
     const [lastGeneratedPrompt, setLastGeneratedPrompt] = useState(scene.image ? scene.prompt : null);
     const { start, end } = getSceneDuration(scene.sentences);
@@ -28,6 +33,12 @@ const Scene = ({ scene, index }) => {
             setLastGeneratedPrompt(null);
         }
     }, [scene.image]);
+
+    useEffect(() => {
+        if (!isEditingPrompt) {
+            setLocalPrompt(scene.prompt || "");
+        }
+    }, [scene.prompt, isEditingPrompt]);
 
     const handleImageUpload = async (e) => {
         const file = e.target.files[0];
@@ -62,13 +73,65 @@ const Scene = ({ scene, index }) => {
     };
 
     const handleCleanScene = () => {
-        dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, updates: { image: null, prompt: "", subjectMediaIds: [] } } });
+        dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, updates: { image: null, prompt: "", subjectMediaIds: [], characterMap: {} } } });
         setLastGeneratedPrompt(null);
         toast.success("Scene cleaned");
     };
 
+    const handleSavePrompt = () => {
+        const newMap = { ...(scene.characterMap || {}) };
+        let finalPrompt = localPrompt;
+        const matches = localPrompt.match(/\[CH(?:\d+|X)\]/g) || [];
+
+        // Auto-initialize new links based on order if they don't exist
+        matches.forEach(tag => {
+            if (tag !== '[CHX]') {
+                if (!newMap[tag]) {
+                    const num = parseInt(tag.replace(/\D/g, ''), 10) - 1;
+                    if (!isNaN(num) && state.characters && state.characters[num]) {
+                        newMap[tag] = state.characters[num].id;
+                    } else {
+                        // Tag is out of bounds (e.g. [CH3] but only 2 characters exist)
+                        finalPrompt = finalPrompt.split(tag).join('[CHX]');
+                    }
+                } else {
+                    // Double check if a previously mapped character was somehow deleted and lingering
+                    const charExists = state.characters?.some(c => c.id === newMap[tag]);
+                    if (!charExists) {
+                        finalPrompt = finalPrompt.split(tag).join('[CHX]');
+                        delete newMap[tag];
+                    }
+                }
+            }
+        });
+
+        dispatch({
+            type: 'UPDATE_SCENE_META',
+            payload: { id: scene.id, updates: { prompt: finalPrompt, characterMap: newMap } }
+        });
+        setLocalPrompt(finalPrompt);
+        setIsEditingPrompt(false);
+    };
+
     const handleGenerateImage = async () => {
         if (!scene.prompt) return toast.error("Enter a prompt first");
+
+        // Validation: Unlinked Characters
+        if (scene.prompt.includes('[CHX]')) {
+            return toast.error("Error: Prompt contains unlinked character [CHX]");
+        }
+
+        // Validation: Missing Media ID
+        const allStateCharacters = state.characters || [];
+        const promptTags = scene.prompt.match(/\[CH(?:\d+)\]/g) || [];
+        for (const tag of promptTags) {
+            const charId = scene.characterMap?.[tag];
+            const character = allStateCharacters.find(c => c.id === charId);
+            if (character && !character.mediaId) {
+                return toast.error(`Error: Linked character "${character.name || tag}" is missing an uploaded image.`);
+            }
+        }
+
         const sessionData = getStorageItem('sb_global_session_key');
         if (!sessionData.text) {
             return toast.error("Session Key is missing. Please add it first.");
@@ -78,9 +141,15 @@ const Scene = ({ scene, index }) => {
         const toastId = toast.loading("Generating image...");
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const subjectIds = scene.subjectMediaIds || [];
-            const allStateCharacters = state.characters || [];
-            
+
+            // Re-resolve active subject IDs from characterMap exactly based on the prompt's tags
+            const matches = scene.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
+            const subjectIds = matches.map(tag => {
+                const charId = scene.characterMap?.[tag];
+                const character = allStateCharacters.find(c => c.id === charId);
+                return character ? character.mediaId : null;
+            }).filter(Boolean);
+
             let endpoint = `${backendUrl}/api/generate-image`;
             let reqBody = {
                 prompt: scene.prompt,
@@ -103,7 +172,7 @@ const Scene = ({ scene, index }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reqBody)
             });
-            
+
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 if (err.refresh) {
@@ -167,7 +236,7 @@ const Scene = ({ scene, index }) => {
                     characters: charactersPayload
                 })
             });
-            
+
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.message || "Failed to generate");
@@ -175,15 +244,34 @@ const Scene = ({ scene, index }) => {
 
             const data = await res.json();
             if (data.prompt) {
-                dispatch({ 
-                    type: 'UPDATE_SCENE_META', 
-                    payload: { 
-                        id: scene.id, 
-                        updates: { 
-                            prompt: data.prompt, 
-                            subjectMediaIds: data.subject_media_ids || [] 
-                        } 
-                    } 
+
+                // Construct fresh mapping based on what LLM returned
+                const newMap = { ...(scene.characterMap || {}) };
+                let finalPrompt = data.prompt;
+                const matches = data.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
+
+                matches.forEach(tag => {
+                    if (tag !== '[CHX]') {
+                        const num = parseInt(tag.replace(/\D/g, ''), 10) - 1;
+                        if (activeCharacters[num]) {
+                            newMap[tag] = activeCharacters[num].id;
+                        } else {
+                            // Backend generated an invalid out-of-bounds tag
+                            finalPrompt = finalPrompt.split(tag).join('[CHX]');
+                        }
+                    }
+                });
+
+                dispatch({
+                    type: 'UPDATE_SCENE_META',
+                    payload: {
+                        id: scene.id,
+                        updates: {
+                            prompt: finalPrompt,
+                            subjectMediaIds: data.subject_media_ids || [],
+                            characterMap: newMap
+                        }
+                    }
                 });
                 toast.success("Prompt Generated", { id: toastId });
             } else {
@@ -209,10 +297,137 @@ const Scene = ({ scene, index }) => {
         dispatch({ type: 'UNGROUP_SCENE', payload: scene.id });
     };
 
+    const handleUpdateLink = (tag, charId) => {
+        let newPrompt = scene.prompt || "";
+        const newMap = { ...(scene.characterMap || {}) };
+        let newTag = tag;
+
+        if (charId === null) {
+            newTag = '[CHX]';
+            delete newMap[tag]; // Unlink
+        } else {
+            const charIndex = state.characters?.findIndex(c => c.id === charId);
+            if (charIndex !== -1) {
+                newTag = `[CH${charIndex + 1}]`;
+                newMap[newTag] = charId;
+
+                if (newTag !== tag) {
+                    delete newMap[tag]; // Remove old mapping
+                }
+            }
+        }
+
+        if (newTag !== tag) {
+            // Replace all occurrences of the old tag with the new tag in the prompt text
+            newPrompt = newPrompt.split(tag).join(newTag);
+        }
+
+        dispatch({
+            type: 'UPDATE_SCENE_META',
+            payload: {
+                id: scene.id,
+                updates: {
+                    prompt: newPrompt,
+                    characterMap: newMap
+                }
+            }
+        });
+
+        setLocalPrompt(newPrompt); // Keep local state in sync
+        setLinkDialog(null);
+    };
+
+    const renderPromptWithLinks = () => {
+        if (!scene.prompt) return <span className="text-slate-400 italic">No prompt generated...</span>;
+
+        const parts = scene.prompt.split(/(\[CH(?:\d+|X)\])/g);
+
+        return parts.map((part, i) => {
+            const match = part.match(/\[CH(?:\d+|X)\]/);
+            if (match) {
+                const tag = match[0];
+                const mappedId = scene.characterMap?.[tag];
+                const character = state.characters?.find(c => c.id === mappedId);
+
+                if (!character) {
+                    return (
+                        <span
+                            key={i}
+                            onClick={() => setLinkDialog({ tag })}
+                            className="text-red-500 font-bold bg-red-50 px-1 rounded border border-red-200 cursor-pointer hover:bg-red-100 transition-colors"
+                        >
+                            [UNLINKED]
+                        </span>
+                    );
+                }
+
+                return (
+                    <span
+                        key={i}
+                        onClick={() => setLinkDialog({ tag })}
+                        className="text-blue-600 font-bold bg-blue-50 px-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
+                        title={`Link: ${character.name}`}
+                    >
+                        {character.name || tag}
+                    </span>
+                );
+            }
+            return <span key={i}>{part}</span>;
+        });
+    };
+
     const isImageGenDisabled = isBusy || (!!scene.image && scene.prompt === lastGeneratedPrompt);
 
     return (
-        <Card className="overflow-hidden border-slate-200 shadow-sm transition-shadow">
+        <Card className="overflow-hidden border-slate-200 shadow-sm transition-shadow relative">
+
+            {/* Link Character Dialog */}
+            <Dialog open={!!linkDialog} onOpenChange={(open) => !open && setLinkDialog(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Link Character for {linkDialog?.tag}</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-2 py-4">
+                        {state.characters?.map(char => {
+                            const isCurrentlySelected = scene.characterMap?.[linkDialog?.tag] === char.id;
+
+                            return (
+                                <Button
+                                    key={char.id}
+                                    variant={isCurrentlySelected ? "default" : "outline"}
+                                    className={`justify-start h-auto py-2 ${isCurrentlySelected ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' : ''}`}
+                                    onClick={() => handleUpdateLink(linkDialog.tag, char.id)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {char.image ? (
+                                            <img src={char.image} alt="char" className="w-8 h-8 rounded-full object-cover" />
+                                        ) : (
+                                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
+                                                <FaImage size={12} />
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col items-start text-left">
+                                            <span className={`font-bold text-sm ${isCurrentlySelected ? 'text-blue-800' : 'text-slate-800'}`}>
+                                                {char.name || 'Unnamed'}
+                                            </span>
+                                            <span className={`text-xs truncate max-w-[250px] ${isCurrentlySelected ? 'text-blue-600' : 'text-slate-500'}`}>
+                                                {char.description}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Button>
+                            );
+                        })}
+                        {(!state.characters || state.characters.length === 0) && (
+                            <p className="text-sm text-slate-500 text-center py-4">No characters available.</p>
+                        )}
+                        <Button variant="destructive" className="mt-4 border border-red-200" onClick={() => handleUpdateLink(linkDialog?.tag, null)}>
+                            Unlink Character
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <div className="flex border-b px-3 py-1 items-center justify-between h-9">
                 <div className="flex items-center gap-2">
                     <Badge>Scene {index + 1}</Badge>
@@ -291,13 +506,28 @@ const Scene = ({ scene, index }) => {
                         </div>
                     </div>
 
-                    <div className="w-full md:w-2/3 pl-0 md:pl-4 pt-4 md:pt-0 flex flex-col gap-2">
-                        <Textarea
-                            placeholder="Describe scene..."
-                            className="text-xs resize-none bg-white h-24 focus-visible:ring-1"
-                            value={scene.prompt}
-                            onChange={(e) => dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, field: 'prompt', value: e.target.value } })}
-                        />
+                    <div className="w-full md:w-2/3 pl-0 md:pl-4 pt-4 md:pt-0 flex flex-col gap-2 relative">
+                        {isEditingPrompt ? (
+                            <div className="relative">
+                                <Textarea
+                                    value={localPrompt}
+                                    onChange={(e) => setLocalPrompt(e.target.value)}
+                                    className="text-xs resize-none bg-white h-24 focus-visible:ring-1 pr-10"
+                                    placeholder="Enter image prompt here... Use [CH1], [CH2] etc. to link characters."
+                                    autoFocus
+                                />
+                                <div className="absolute bottom-2 right-2 flex gap-1">
+                                    <Button size="icon" className="h-6 w-6 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSavePrompt}>
+                                        <FaCheck size={10} />
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="relative h-24 bg-white border border-slate-200 rounded-md p-3 text-xs overflow-y-auto whitespace-pre-wrap">
+                                {renderPromptWithLinks()}
+                            </div>
+                        )}
+
                         <div className="flex flex-wrap gap-2">
                             <Button size="sm" className={`h-7 text-xs text-white ${isImageGenDisabled ? 'bg-slate-400' : 'bg-purple-600 hover:bg-purple-700'}`} onClick={handleGenerateImage} disabled={isImageGenDisabled} title={isImageGenDisabled ? "Change prompt to regenerate" : "Generate Image"}>
                                 {isBusy ? "..." : <><FaMagic className="mr-1" /> Gen Image</>}
@@ -305,6 +535,13 @@ const Scene = ({ scene, index }) => {
                             <Button size="sm" variant="outline" className="h-7 text-xs text-slate-600" onClick={handleGeneratePrompt} disabled={isPromptBusy}>
                                 {isPromptBusy ? "..." : <><FaPen className="mr-1" /> Gen Prompt</>}
                             </Button>
+
+                            {!isEditingPrompt && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-slate-600" onClick={() => setIsEditingPrompt(true)}>
+                                    <FaEdit className="mr-1" /> Edit
+                                </Button>
+                            )}
+
                             <Button size="sm" variant="outline" className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100" onClick={handleCleanScene} title="Clear Prompt & Image">
                                 <FaEraser className="mr-1" /> Clean
                             </Button>

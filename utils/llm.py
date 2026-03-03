@@ -59,22 +59,40 @@ LINES:
 {formatted_lines}
 """
 
-GENERATE_IMAGE_PROMPT_SYSTEM = """You are a creative AI image prompt engineer. Some lines from a script, its title, and optional instructions are provided to you. Your task is to generate a descriptive image-generation prompt that represents the scene while strictly following the provided instructions. This prompt will later be used to generate an image using a text-to-image AI model.
+GENERATE_IMAGE_PROMPT_SYSTEM = """You are a creative AI image prompt engineer. A story title, some lines from a scene, previous scene details, instructions and a list of characters are provided to you. Your task is to generate a descriptive image-generation prompt that represents the scene meaningfully following the provided instructions. This prompt will later be used to generate an image using a text-to-image AI model.
 
 INPUTS:
-- **TITLE** (REQUIRED): The title of the script.
+- **TITLE** (REQUIRED): The title of the story.
 - **SCENE LINES** (REQUIRED): A few lines from the script that describe the current scene.
-- **CHARACTERS** (OPTIONAL): A numbered list of characters present in the project.
-- **PREVIOUS SCENE PROMPT** (OPTIONAL): The prompt of the previous scene. Use this to maintain visual continuity and consistent character/environment details.
+- **PREVIOUS SCENE** (OPTIONAL): Details on the previous scene.
+- **CHARACTERS** (OPTIONAL): A list of characters present in the story with their name and descriptions.
 - **INSTRUCTIONS** (OPTIONAL): Some guidelines for style, character details, atmosphere, or any other constraints.
 
 RULES:
-- Be creative and descriptive in your prompt to ensure the generated image captures the essence of the scene.
-- Ensure visual consistency with the PREVIOUS SCENE PROMPT if it is provided.
-- If INSTRUCTIONS are provided, they must be heavily prioritized and incorporated into the final prompt.
-- Do not add any instruction to add any type of caption text in the output image.
-- CRITICAL CHARACTER RULE: If CHARACTERS are provided and any of those characters appear in this scene, you MUST refer to them using ONLY their tag (e.g., [CH1], [CH2]) in the prompt. Do not write their names or describe their physical appearance if a tag is used.
+- If previous scene and current one seems to be a continuation, ensure continuity of the generated image prompt with the previous scene's prompt.
+- To include a character in the prompt from given list, you use a special notation **[CHX]** where X is the index of the character in the provided character list (starting from 1). For example, if you want to include the first character from the list, you would use [CH1] in your prompt.
+- All the characters present in the whole story is provided to you, but you include only the characters that are required in current scene.
+- If there is no characters in the scene, you just ignore the provided character list.
+- If there is a character required in the scene which is not provided in the character list, you MUST NOT write a character notation for it. Instead you should describe the character in the prompt with words.
+- Follow the instructions provided to you strictly.
 """
+
+GENERATE_IMAGE_PROMPT_USER = """Generate an image prompt using the following inputs:
+**TITLE:** {title}
+
+**SCENE LINES:**
+{scene_lines}
+
+**PREVIOUS SCENE:**
+{formatted_previous_scene}
+
+**CHARACTERS:**
+{formatted_characters}
+
+**INSTRUCTIONS:**
+{instructions}
+"""
+
 
 DETECT_CHARACTERS_SYSTEM = """You are a professional animation artist working on a story. Lines from a script are provided to you. Your task is to find out the main characters from the story and return a list.
 
@@ -91,24 +109,6 @@ LINES:
 {formatted_lines}
 """
 
-def GENERATE_IMAGE_PROMPT_USER(
-        title: str,
-        scene_lines: str,
-        instructions: str | None = None,
-        previous_prompt: str | None = None,
-        formatted_characters: str | None = None,
-    ) -> str:
-    prompt = f"Generate an image prompt using the following inputs:\n\n**TITLE:**\n{title}\n\n**SCENE LINES:**\n{scene_lines}"
-    
-    if formatted_characters:
-        prompt += f"\n\n**CHARACTERS:**\n{formatted_characters}"
-    if previous_prompt:
-        prompt += f"\n\n**PREVIOUS SCENE PROMPT:**\n{previous_prompt}"
-    if instructions:
-        prompt += f"\n\n**INSTRUCTIONS:**\n{instructions}"
-    
-    return prompt
-
 def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
     structured_model = model.with_structured_output(ScenesWithIndexGroups)
     formatted_lines = "\n".join([f"{i}: \"{line['text']}\"" for i, line in enumerate(lines)])
@@ -119,59 +119,6 @@ def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
     ])
     return response.scenes
 
-def generate_image_prompt(
-        title: str,
-        scene_lines: str,
-        instructions: str | None = None,
-        previous_prompt: str | None = None,
-        characters: list | None = None
-    ) -> dict:
-    
-    formatted_characters = None
-    if characters and len(characters) > 0:
-        formatted_characters = "\n".join([f"CH{i+1}: {c.description}" for i, c in enumerate(characters)])
-
-    structured_model = model.with_structured_output(SceneImagePrompt)
-    response = structured_model.invoke([
-        {"role": "system", "content": GENERATE_IMAGE_PROMPT_SYSTEM},
-        {"role": "user", "content": GENERATE_IMAGE_PROMPT_USER(
-            title=title,
-            scene_lines=scene_lines,
-            instructions=instructions,
-            previous_prompt=previous_prompt,
-            formatted_characters=formatted_characters
-        )}
-    ])
-    
-    raw_prompt = response.prompt
-    final_prompt = raw_prompt
-    subject_media_ids = []
-    
-    # Process the [CHX] tags into FIRST_CHARACTER, SECOND_CHARACTER and collect media IDs
-    if characters and len(characters) > 0:
-        ordinals = ['FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH', 'SIXTH', 'SEVENTH', 'EIGHTH', 'NINTH', 'TENTH']
-        counter = 0
-        
-        def replacer(match):
-            nonlocal counter
-            try:
-                char_idx = int(match.group(1)) - 1
-                if 0 <= char_idx < len(characters):
-                    subject_media_ids.append(characters[char_idx].mediaId)
-                    word = (ordinals[counter] if counter < len(ordinals) else 'EXTRA') + '_CHARACTER'
-                    counter += 1
-                    return word
-            except ValueError:
-                pass
-            return match.group(0)
-
-        final_prompt = re.sub(r'\[CH(\d+)\]', replacer, raw_prompt)
-
-    return {
-        "prompt": final_prompt,
-        "subject_media_ids": subject_media_ids
-    }
-
 def detect_characters(title: str, lines: list[dict]) -> list[Character]:
     structured_model = model.with_structured_output(DetectedCharacters)
     formatted_lines = "\n".join([f"{line['text']}" for line in lines])
@@ -181,3 +128,31 @@ def detect_characters(title: str, lines: list[dict]) -> list[Character]:
         {"role": "user", "content": DETECT_CHARACTERS_USER.format(title=title, formatted_lines=formatted_lines)}
     ])
     return response.characters
+
+def generate_image_prompt(
+        title: str,
+        scene_lines: str,
+        previous_scene: dict | None = None,
+        characters: list | None = None,
+        instructions: str | None = None,
+):
+    instructions = instructions or "No instructions."
+    formatted_previous_scene = "No previous scene available."
+    if previous_scene:
+        formatted_previous_scene = f"- Scene Lines: {previous_scene.get('scene_lines', 'N/A')}\n- Generated Prompt: {previous_scene.get('prompt', 'N/A')}"
+    formatted_characters = "No characters."
+    if characters and len(characters) > 0:
+        formatted_characters = "\n".join([f"[CH{i+1}]\n- Name: {c.name}\n- Description: {c.description}" for i, c in enumerate(characters)])
+
+    structured_model = model.with_structured_output(SceneImagePrompt)
+    response = structured_model.invoke([
+        {"role": "system", "content": GENERATE_IMAGE_PROMPT_SYSTEM},
+        {"role": "user", "content": GENERATE_IMAGE_PROMPT_USER.format(
+            title=title,
+            scene_lines=scene_lines,
+            instructions=instructions,
+            formatted_previous_scene=formatted_previous_scene,
+            formatted_characters=formatted_characters
+        )}
+    ])
+    return response.prompt
