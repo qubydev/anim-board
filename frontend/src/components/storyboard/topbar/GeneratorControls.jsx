@@ -326,6 +326,7 @@ const GeneratorControls = () => {
 
                 const promise = (async () => {
                     try {
+                        // --- Bulk Validation Hooks ---
                         if (scene.prompt.includes('[CHX]')) {
                             throw new Error(`Prompt contains unlinked character [CHX]`);
                         }
@@ -338,9 +339,11 @@ const GeneratorControls = () => {
                                 throw new Error(`Linked character "${character.name || tag}" is missing an uploaded image.`);
                             }
                         }
+                        // -----------------------------
 
                         dispatch({ type: 'UPDATE_SCENE_META', payload: { id: scene.id, field: 'imageGenStatus', value: 'generating' } });
 
+                        // Re-resolve active subject IDs based on current mapping
                         const subjectIds = promptTags.map(tag => {
                             const charId = scene.characterMap?.[tag];
                             const character = allStateCharacters.find(c => c.id === charId);
@@ -358,8 +361,9 @@ const GeneratorControls = () => {
                             reqBody.characters = subjectIds.map(id => {
                                 const c = allStateCharacters.find(ch => ch.mediaId === id);
                                 return {
-                                    mediaId: id,
-                                    description: c ? (c.description || 'Character') : 'Character'
+                                    name: c ? (c.name || 'Character') : 'Character',
+                                    description: c ? (c.description || 'Character') : 'Character',
+                                    mediaId: id
                                 };
                             });
                         }

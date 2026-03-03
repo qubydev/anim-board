@@ -1,5 +1,3 @@
-// File: /frontend/src/components/storyboard/Scene.jsx
-
 import React, { useState, useEffect } from 'react';
 import { useStoryBoard } from '../../context/StoryBoardContext';
 import { getSceneDuration, fileToBase64, getStorageItem, refreshSessionKey } from '../../lib/storyboard-utils';
@@ -16,7 +14,7 @@ const Scene = ({ scene, index }) => {
     const { state, dispatch } = useStoryBoard();
     const [isGeneratingImg, setIsGeneratingImg] = useState(false);
     const [isGeneratingTxt, setIsGeneratingTxt] = useState(false);
-
+    
     // Custom edit state
     const [isEditingPrompt, setIsEditingPrompt] = useState(false);
     const [localPrompt, setLocalPrompt] = useState(scene.prompt || "");
@@ -84,7 +82,7 @@ const Scene = ({ scene, index }) => {
         const newMap = { ...(scene.characterMap || {}) };
         let finalPrompt = localPrompt;
         const matches = localPrompt.match(/\[CH(?:\d+|X)\]/g) || [];
-
+        
         matches.forEach(tag => {
             if (tag !== '[CHX]') {
                 if (!newMap[tag]) {
@@ -104,9 +102,9 @@ const Scene = ({ scene, index }) => {
             }
         });
 
-        dispatch({
-            type: 'UPDATE_SCENE_META',
-            payload: { id: scene.id, updates: { prompt: finalPrompt, characterMap: newMap } }
+        dispatch({ 
+            type: 'UPDATE_SCENE_META', 
+            payload: { id: scene.id, updates: { prompt: finalPrompt, characterMap: newMap } } 
         });
         setLocalPrompt(finalPrompt);
         setIsEditingPrompt(false);
@@ -138,14 +136,14 @@ const Scene = ({ scene, index }) => {
         const toastId = toast.loading("Generating image...");
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
+            
             const matches = scene.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
             const subjectIds = matches.map(tag => {
                 const charId = scene.characterMap?.[tag];
                 const character = allStateCharacters.find(c => c.id === charId);
                 return character ? character.mediaId : null;
             }).filter(Boolean);
-
+            
             let endpoint = `${backendUrl}/api/generate-image`;
             let reqBody = {
                 prompt: scene.prompt,
@@ -157,8 +155,9 @@ const Scene = ({ scene, index }) => {
                 reqBody.characters = subjectIds.map(id => {
                     const c = allStateCharacters.find(ch => ch.mediaId === id);
                     return {
-                        mediaId: id,
-                        description: c ? (c.description || 'Character') : 'Character'
+                        name: c ? (c.name || 'Character') : 'Character',
+                        description: c ? (c.description || 'Character') : 'Character',
+                        mediaId: id
                     };
                 });
             }
@@ -168,7 +167,7 @@ const Scene = ({ scene, index }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reqBody)
             });
-
+            
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 if (err.refresh) {
@@ -206,10 +205,10 @@ const Scene = ({ scene, index }) => {
         const sceneIndex = state.items.findIndex(i => i.id === scene.id);
         const previousScenes = state.items.slice(0, sceneIndex).filter(i => i.type === 'scene');
         const previousScene = previousScenes.length > 0 ? previousScenes[previousScenes.length - 1] : null;
-
+        
         const previousScenePayload = previousScene ? {
-            prompt: previousScene.prompt,
-            lines: previousScene.sentences.map(s => s.text).join(' ').trim()
+            prompt: previousScene.prompt || "",
+            lines: previousScene.sentences.map(s => s.text).join(' ').trim() || ""
         } : null;
 
         const charactersPayload = (state.characters || []).length > 0 ? state.characters.map(c => ({
@@ -235,7 +234,7 @@ const Scene = ({ scene, index }) => {
                     instructions: instData.text ? instData.text : null
                 })
             });
-
+            
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.message || "Failed to generate");
@@ -243,11 +242,11 @@ const Scene = ({ scene, index }) => {
 
             const data = await res.json();
             if (data.prompt) {
-
+                
                 const newMap = { ...(scene.characterMap || {}) };
                 let finalPrompt = data.prompt;
                 const matches = data.prompt.match(/\[CH(?:\d+|X)\]/g) || [];
-
+                
                 matches.forEach(tag => {
                     if (tag !== '[CHX]') {
                         const num = parseInt(tag.replace(/\D/g, ''), 10) - 1;
@@ -259,16 +258,16 @@ const Scene = ({ scene, index }) => {
                     }
                 });
 
-                dispatch({
-                    type: 'UPDATE_SCENE_META',
-                    payload: {
-                        id: scene.id,
-                        updates: {
-                            prompt: finalPrompt,
+                dispatch({ 
+                    type: 'UPDATE_SCENE_META', 
+                    payload: { 
+                        id: scene.id, 
+                        updates: { 
+                            prompt: finalPrompt, 
                             subjectMediaIds: data.subject_media_ids || [],
                             characterMap: newMap
-                        }
-                    }
+                        } 
+                    } 
                 });
                 toast.success("Prompt Generated", { id: toastId });
             } else {
@@ -307,7 +306,7 @@ const Scene = ({ scene, index }) => {
             if (charIndex !== -1) {
                 newTag = `[CH${charIndex + 1}]`;
                 newMap[newTag] = charId;
-
+                
                 if (newTag !== tag) {
                     delete newMap[tag]; // Remove old mapping
                 }
@@ -318,18 +317,18 @@ const Scene = ({ scene, index }) => {
             newPrompt = newPrompt.split(tag).join(newTag);
         }
 
-        dispatch({
-            type: 'UPDATE_SCENE_META',
-            payload: {
-                id: scene.id,
-                updates: {
+        dispatch({ 
+            type: 'UPDATE_SCENE_META', 
+            payload: { 
+                id: scene.id, 
+                updates: { 
                     prompt: newPrompt,
-                    characterMap: newMap
-                }
-            }
+                    characterMap: newMap 
+                } 
+            } 
         });
-
-        setLocalPrompt(newPrompt);
+        
+        setLocalPrompt(newPrompt); 
         setLinkDialog(null);
     };
 
@@ -337,18 +336,18 @@ const Scene = ({ scene, index }) => {
         if (!scene.prompt) return <span className="text-slate-400 italic">No prompt generated...</span>;
 
         const parts = scene.prompt.split(/(\[CH(?:\d+|X)\])/g);
-
+        
         return parts.map((part, i) => {
             const match = part.match(/\[CH(?:\d+|X)\]/);
             if (match) {
                 const tag = match[0];
                 const mappedId = scene.characterMap?.[tag];
                 const character = state.characters?.find(c => c.id === mappedId);
-
+                
                 if (!character) {
                     return (
-                        <span
-                            key={i}
+                        <span 
+                            key={i} 
                             onClick={() => setLinkDialog({ tag })}
                             className="text-red-500 font-bold bg-red-50 px-1 rounded border border-red-200 cursor-pointer hover:bg-red-100 transition-colors"
                         >
@@ -358,8 +357,8 @@ const Scene = ({ scene, index }) => {
                 }
 
                 return (
-                    <span
-                        key={i}
+                    <span 
+                        key={i} 
                         onClick={() => setLinkDialog({ tag })}
                         className="text-blue-600 font-bold bg-blue-50 px-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
                         title={`Link: ${character.name}`}
@@ -376,7 +375,7 @@ const Scene = ({ scene, index }) => {
 
     return (
         <Card className="overflow-hidden border-slate-200 shadow-sm transition-shadow relative">
-
+            
             <Dialog open={!!linkDialog} onOpenChange={(open) => !open && setLinkDialog(null)}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -385,10 +384,10 @@ const Scene = ({ scene, index }) => {
                     <div className="flex flex-col gap-2 py-4">
                         {state.characters?.map(char => {
                             const isCurrentlySelected = scene.characterMap?.[linkDialog?.tag] === char.id;
-
+                            
                             return (
-                                <Button
-                                    key={char.id}
+                                <Button 
+                                    key={char.id} 
                                     variant={isCurrentlySelected ? "default" : "outline"}
                                     className={`justify-start h-auto py-2 ${isCurrentlySelected ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' : ''}`}
                                     onClick={() => handleUpdateLink(linkDialog.tag, char.id)}
@@ -530,7 +529,7 @@ const Scene = ({ scene, index }) => {
                             <Button size="sm" variant="outline" className="h-7 text-xs text-slate-600" onClick={handleGeneratePrompt} disabled={isPromptBusy}>
                                 {isPromptBusy ? "..." : <><FaPen className="mr-1" /> Gen Prompt</>}
                             </Button>
-
+                            
                             {!isEditingPrompt && (
                                 <Button size="sm" variant="outline" className="h-7 text-xs text-slate-600" onClick={() => setIsEditingPrompt(true)}>
                                     <FaEdit className="mr-1" /> Edit

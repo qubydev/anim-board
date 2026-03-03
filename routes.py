@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from utils.llm import generate_scenes, generate_image_prompt, detect_characters
 from utils.whisk import generate_image, generate_image_with_chars, upload_image, WhiskError
 from typing import Literal, Optional, List
@@ -9,13 +9,17 @@ from enum import Enum
 router = APIRouter()
 
 class CharacterInput(BaseModel):
-    name: str
-    description: str
+    name: str = Field(..., min_length=1, strip_whitespace=True)
+    description: str = Field(..., min_length=1, strip_whitespace=True)
+
+class Scene(BaseModel):
+    lines: str = Field(..., min_length=1, strip_whitespace=True)
+    prompt: str = Field(..., min_length=1, strip_whitespace=True)
 
 class ImagePromptRequest(BaseModel):
     title: str
     scene_lines: str
-    previous_scene: Optional[dict] = None
+    previous_scene: Optional[Scene] = None
     characters: Optional[List[CharacterInput]] = None
     instructions: Optional[str] = None
 
@@ -34,9 +38,14 @@ class GenerateImageRequest(BaseModel):
     model: Literal["IMAGEN_3_5"] = "IMAGEN_3_5"
     session_token: str
 
+class CharacterMediaInput(BaseModel):
+    name: str = Field(..., min_length=1, strip_whitespace=True)
+    description: str = Field(..., min_length=1, strip_whitespace=True)
+    mediaId: str = Field(..., min_length=1, strip_whitespace=True)
+
 class GenerateImageCharsRequest(BaseModel):
     prompt: str
-    characters: List[CharacterInput]
+    characters: List[CharacterMediaInput]
     aspect_ratio: ImageAspectRatio | None = ImageAspectRatio.landscape
     session_token: str
 
@@ -82,9 +91,19 @@ async def _generate_image(request: GenerateImageRequest):
 @router.post("/generate-image-chars")
 async def _generate_image_chars(request: GenerateImageCharsRequest):
     try:
+        formatted_characters = []
+        for chr in request.characters:
+            formatted_characters.append({
+                "caption": f"{chr.name}: {chr.description}",
+                "mediaInput": {
+                    "mediaCategory": "MEDIA_CATEGORY_SUBJECT",
+                    "mediaGenerationId": chr.mediaId
+                }
+            })
+        
         data = generate_image_with_chars(
             prompt=request.prompt,
-            characters=[c.dict() for c in request.characters],
+            recipe_media_inputs=formatted_characters,
             aspect_ratio=request.aspect_ratio.value,
             session_token=request.session_token
         )

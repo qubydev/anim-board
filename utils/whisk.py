@@ -1,6 +1,8 @@
+import re
 from utils.redis_client import client as r_client
 import requests
 from fastapi import status
+from utils.helpers import number_to_position
 
 WHISK_SESSION_TOKEN_KEY = "whisk:session_token"
 SESSION_URL = "https://labs.google/fx/api/auth/session"
@@ -132,7 +134,7 @@ def generate_image(
 # --------------------------------
 def generate_image_with_chars(
     prompt,
-    characters,
+    recipe_media_inputs,
     aspect_ratio="IMAGE_ASPECT_RATIO_LANDSCAPE",
     session_token=None,
 ):
@@ -147,6 +149,31 @@ def generate_image_with_chars(
             status.HTTP_400_BAD_REQUEST,
             "Prompt is required to generate image",
         )
+
+    matches = re.findall(r'\[CH(\d+)\]', prompt)
+
+    unique_chars = []
+    for m in matches:
+        if m not in unique_chars:
+            unique_chars.append(m)
+
+    if len(unique_chars) > 10:
+        raise WhiskError(
+            status.HTTP_400_BAD_REQUEST,
+            "Maximum 10 different characters are allowed",
+        )
+
+    char_mapping = {
+        ch: f"{number_to_position(index + 1)} Character"
+        for index, ch in enumerate(unique_chars)
+    }
+
+    def replace_character(match):
+        ch_number = match.group(1)
+        return char_mapping.get(ch_number, "Character")
+
+    prompt = re.sub(r'\[CH(\d+)\]', replace_character, prompt)
+    prompt = prompt.replace('[CHX]', 'Character')
 
     access_token = r_client.get(WHISK_SESSION_TOKEN_KEY)
 
@@ -166,16 +193,6 @@ def generate_image_with_chars(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "Failed to update access token",
         )
-
-    recipe_media_inputs = []
-    for char in characters:
-        recipe_media_inputs.append({
-            "caption": char.get("description", "Character"),
-            "mediaInput": {
-                "mediaCategory": "MEDIA_CATEGORY_SUBJECT",
-                "mediaGenerationId": char.get("mediaId")
-            }
-        })
 
     payload = {
         "imageModelSettings": {
@@ -214,7 +231,6 @@ def generate_image_with_chars(
         )
 
     return response.json()
-
 
 # --------------------------------
 # Image Upload
