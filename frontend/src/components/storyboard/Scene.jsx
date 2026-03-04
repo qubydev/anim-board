@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStoryBoard } from '../../context/StoryBoardContext';
-import { getSceneDuration, fileToBase64, getStorageItem, refreshSessionKey } from '../../lib/storyboard-utils';
+import { getSceneDuration, fileToBase64, getStorageItem, refreshSessionKey, formatSRTTimestamp } from '../../lib/storyboard-utils';
 import Sentence from './Sentence';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -151,7 +151,6 @@ const Scene = ({ scene, index }) => {
 
             if (subjectIds.length > 0) {
                 endpoint = `${backendUrl}/api/generate-image-chars`;
-                // Now correctly sending name, description, and mediaId
                 reqBody.characters = subjectIds.map(id => {
                     const c = allStateCharacters.find(ch => ch.mediaId === id);
                     return {
@@ -217,7 +216,6 @@ const Scene = ({ scene, index }) => {
         }, []);
 
         const activeCharacters = (state.characters || []).filter(c => c.mediaId);
-        // Prompt generation only needs name and description
         const charactersPayload = activeCharacters.length > 0 ? activeCharacters.map(c => ({
             name: c.name || 'Unknown Character',
             description: c.description || 'character'
@@ -433,7 +431,7 @@ const Scene = ({ scene, index }) => {
                 <div className="flex items-center gap-2">
                     <Badge>Scene {index + 1}</Badge>
                     <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">
-                        {start.toFixed(2)}s - {end.toFixed(2)}s
+                        {formatSRTTimestamp(start)} --&gt; {formatSRTTimestamp(end)}
                     </span>
                 </div>
                 <div className="flex gap-1">

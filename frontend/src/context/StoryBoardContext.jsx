@@ -272,8 +272,8 @@ const reducer = (state, action) => {
 
         case 'ADD_ITEM': {
             const maxEnd = getMaxEndTime(state.items);
-            const startStr = parseFloat((maxEnd > 0 ? maxEnd + 0.1 : 0).toFixed(2));
-            const endStr = parseFloat((startStr + 1.0).toFixed(2));
+            const startStr = parseFloat((maxEnd > 0 ? maxEnd + 0.1 : 0).toFixed(3));
+            const endStr = parseFloat((startStr + 1.0).toFixed(3));
 
             const newItem = action.payload.type === 'scene'
                 ? { type: 'scene', id: generateId(), sentences: [], image: null, prompt: "", subjectMediaIds: [], characterMap: {} }
@@ -315,8 +315,8 @@ const reducer = (state, action) => {
 
         case 'ADD_SENTENCE': {
             const maxEnd = getMaxEndTime(state.items);
-            const startStr = parseFloat((maxEnd > 0 ? maxEnd + 0.1 : 0).toFixed(2));
-            const endStr = parseFloat((startStr + 1.0).toFixed(2));
+            const startStr = parseFloat((maxEnd > 0 ? maxEnd + 0.1 : 0).toFixed(3));
+            const endStr = parseFloat((startStr + 1.0).toFixed(3));
 
             return {
                 ...state,

@@ -136,21 +136,17 @@ async def _detect_characters(request: DetectedCharactersRequest):
     return {"characters": characters}
 
 @router.post("/export-video")
-async def _export_video(file: UploadFile = File(...)):
+async def _export_video(file: UploadFile = File(...), audio: Optional[UploadFile] = File(None)):
     try:
         contents = await file.read()
         project_data = json.loads(contents)
         
+        audio_bytes = await audio.read() if audio else None
+        audio_filename = audio.filename if audio else None
+        
         return StreamingResponse(
-            export_video_generator(project_data), 
+            export_video_generator(project_data, audio_bytes, audio_filename), 
             media_type="text/event-stream"
         )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-
-@router.get("/download-video/{filename}")
-async def _download_video(filename: str):
-    file_path = os.path.join(tempfile.gettempdir(), filename)
-    if not os.path.exists(file_path):
-        return JSONResponse({"error": "File not found"}, status_code=404)
-    return FileResponse(file_path, media_type="video/mp4", filename="export.mp4")

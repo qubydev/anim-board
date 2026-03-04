@@ -2,12 +2,13 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { FaArrowLeft, FaVideo, FaFileUpload, FaTimes, FaDownload } from 'react-icons/fa'
+import { FaArrowLeft, FaVideo, FaFileUpload, FaTimes, FaDownload, FaMusic } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 
 export default function Render() {
     const navigate = useNavigate()
     const [jsonFile, setJsonFile] = useState(null)
+    const [audioFile, setAudioFile] = useState(null)
     const [isExporting, setIsExporting] = useState(false)
     const [videoUrl, setVideoUrl] = useState(null)
 
@@ -21,6 +22,13 @@ export default function Render() {
         }
     }
 
+    const handleAudioChange = (e) => {
+        const file = e.target.files[0]
+        if (file && file.type.startsWith('audio/')) {
+            setAudioFile(file)
+        }
+    }
+
     const handleExport = async () => {
         if (!jsonFile) return;
         setIsExporting(true);
@@ -29,6 +37,9 @@ export default function Render() {
         const toastId = toast.loading('Starting export...');
         const formData = new FormData();
         formData.append('file', jsonFile);
+        if (audioFile) {
+            formData.append('audio', audioFile);
+        }
 
         try {
             const response = await fetch(`${BACKEND_URL}/api/export-video`, {
@@ -40,37 +51,66 @@ export default function Render() {
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = '';
 
             while (true) {
                 const { value, done } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+
+                buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = JSON.parse(line.replace('data: ', ''));
-                        if (data.error) throw new Error(data.error);
+                    if (line.trim().startsWith('data: ')) {
+                        const rawJson = line.replace('data: ', '').trim();
+                        if (!rawJson) continue;
 
-                        if (data.status === 'processing') {
-                            toast.loading(`Exporting: ${data.progress}%`, { id: toastId });
-                        } else if (data.status === 'done') {
-                            toast.success('Video Ready!', { id: toastId });
-                            setVideoUrl(`${BACKEND_URL}${data.url}`);
-                            setIsExporting(false);
-                            return;
+                        try {
+                            const data = JSON.parse(rawJson);
+
+                            if (data.error) throw new Error(data.error);
+
+                            if (data.status === 'processing') {
+                                toast.loading(`Exporting: ${data.progress}%`, { id: toastId });
+                            } else if (data.status === 'done') {
+                                toast.success('Video Ready!', { id: toastId });
+
+                                const base64Response = await fetch(`data:video/mp4;base64,${data.video_data}`);
+                                const blob = await base64Response.blob();
+                                const url = URL.createObjectURL(blob);
+
+                                setVideoUrl(url);
+                                setIsExporting(false);
+                                return;
+                            }
+                        } catch (e) {
+                            if (e.message !== "Unexpected end of JSON input" && !e.message.includes("Unexpected token")) {
+                                throw e;
+                            }
                         }
                     }
                 }
             }
         } catch (error) {
-            toast.error(error.message, { id: toastId });
+            toast.error(error.message || "Export failed", { id: toastId });
             setIsExporting(false);
         }
     }
 
     const removeJson = () => setJsonFile(null)
+    const removeAudio = () => setAudioFile(null)
+
+    const handleDownload = () => {
+        if (!videoUrl) return;
+        const a = document.createElement('a');
+        a.href = videoUrl;
+        a.download = 'exported_project.mp4';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center relative px-6">
@@ -101,7 +141,7 @@ export default function Render() {
                                 <FaFileUpload className={`h-5 w-5 transition-colors ${jsonFile ? 'text-green-600' : 'text-muted-foreground group-hover:text-primary'}`} />
                                 <div className="flex flex-col">
                                     <span className="text-sm font-medium">{jsonFile ? jsonFile.name : 'Upload Project JSON'}</span>
-                                    <span className="text-xs text-muted-foreground tracking-tight">Drag & drop or click</span>
+                                    <span className="text-xs text-muted-foreground tracking-tight">Required format</span>
                                 </div>
                             </div>
 
@@ -120,6 +160,34 @@ export default function Render() {
                             <input type="file" className="hidden" accept=".json" onChange={handleJsonChange} disabled={isExporting} />
                         </label>
 
+                        <label
+                            className={`group flex items-center justify-between gap-4 border-2 border-dashed rounded-lg px-5 py-4 cursor-pointer transition-all
+                            ${audioFile ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-primary hover:bg-accent/40'}
+                            ${isExporting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <div className="flex items-center gap-4">
+                                <FaMusic className={`h-5 w-5 transition-colors ${audioFile ? 'text-blue-600' : 'text-muted-foreground group-hover:text-primary'}`} />
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium">{audioFile ? audioFile.name : 'Upload Audio (Optional)'}</span>
+                                    <span className="text-xs text-muted-foreground tracking-tight">Voiceover or Background Music</span>
+                                </div>
+                            </div>
+
+                            {audioFile && !isExporting && (
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={(e) => { e.preventDefault(); removeAudio(); }}
+                                    className="h-7 w-7 text-blue-700 hover:text-red-500"
+                                >
+                                    <FaTimes className="h-3 w-3" />
+                                </Button>
+                            )}
+
+                            <input type="file" className="hidden" accept="audio/*" onChange={handleAudioChange} disabled={isExporting} />
+                        </label>
+
                         <Button
                             className="w-full h-12 text-md font-medium shadow-md transition-all active:scale-[0.98]"
                             disabled={!jsonFile || isExporting}
@@ -134,7 +202,7 @@ export default function Render() {
                             <div className="rounded-xl overflow-hidden shadow-2xl bg-black border aspect-video flex items-center justify-center">
                                 <video src={videoUrl} controls className="w-full h-full" />
                             </div>
-                            <Button variant="outline" className="w-full h-11 border-primary/20 hover:bg-primary/5" onClick={() => window.open(videoUrl)}>
+                            <Button variant="outline" className="w-full h-11 border-primary/20 hover:bg-primary/5" onClick={handleDownload}>
                                 <FaDownload className="mr-2 h-4 w-4" /> Download MP4
                             </Button>
                         </div>

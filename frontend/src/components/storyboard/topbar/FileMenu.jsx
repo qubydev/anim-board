@@ -3,14 +3,37 @@ import { useStoryBoard } from '../../../context/StoryBoardContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { FaDownload, FaUpload, FaEraser, FaSpinner } from 'react-icons/fa';
-import { parseTranscript } from '../../../lib/storyboard-utils';
+import { parseTranscript, formatSRTTimestamp, parseSRTTimestamp } from '../../../lib/storyboard-utils';
 import toast from 'react-hot-toast';
 
 const FileMenu = () => {
     const { state, dispatch } = useStoryBoard();
 
     const handleExport = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+        const exportState = {
+            ...state,
+            items: state.items.map(item => {
+                if (item.type === 'scene') {
+                    return {
+                        ...item,
+                        sentences: item.sentences.map(s => ({
+                            ...s,
+                            start: formatSRTTimestamp(s.start),
+                            end: formatSRTTimestamp(s.end)
+                        }))
+                    };
+                } else if (item.type === 'sentence') {
+                    return {
+                        ...item,
+                        start: formatSRTTimestamp(item.start),
+                        end: formatSRTTimestamp(item.end)
+                    };
+                }
+                return item;
+            })
+        };
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportState, null, 2));
         const node = document.createElement('a');
         node.setAttribute("href", dataStr);
         node.setAttribute("download", `${state.title.replace(/\s+/g, '_') || 'storyboard'}.json`);
@@ -28,6 +51,29 @@ const FileMenu = () => {
             try {
                 const json = JSON.parse(event.target.result);
                 if (json.items && Array.isArray(json.items)) {
+                    
+                    const normalizedItems = json.items.map(item => {
+                        if (item.type === 'scene') {
+                            return {
+                                ...item,
+                                sentences: item.sentences.map(s => ({
+                                    ...s,
+                                    start: parseSRTTimestamp(s.start),
+                                    end: parseSRTTimestamp(s.end)
+                                }))
+                            };
+                        } else if (item.type === 'sentence') {
+                            return {
+                                ...item,
+                                start: parseSRTTimestamp(item.start),
+                                end: parseSRTTimestamp(item.end)
+                            };
+                        }
+                        return item;
+                    });
+
+                    json.items = normalizedItems;
+
                     dispatch({ type: 'SET_STATE', payload: json });
                     toast.success("Storyboard loaded");
                 } else {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStoryBoard } from '../../context/StoryBoardContext';
-import { hasOverlap } from '../../lib/storyboard-utils';
+import { hasOverlap, formatSRTTimestamp, parseSRTTimestamp } from '../../lib/storyboard-utils';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,21 +14,34 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
 
     const [localData, setLocalData] = useState({
         text: sentence.text || '',
-        start: sentence.start || 0,
-        end: sentence.end || 0
+        start: formatSRTTimestamp(sentence.start || 0),
+        end: formatSRTTimestamp(sentence.end || 0)
     });
 
     const isSelected = (state.selection || []).includes(sentence.id);
     const isEmpty = !sentence.text || sentence.text.trim() === '';
 
     useEffect(() => {
-        setLocalData({ text: sentence.text || '', start: sentence.start || 0, end: sentence.end || 0 });
+        setLocalData({
+            text: sentence.text || '',
+            start: formatSRTTimestamp(sentence.start || 0),
+            end: formatSRTTimestamp(sentence.end || 0)
+        });
         if (isEmpty && !isEditing) setIsEditing(true);
     }, [sentence, isEmpty]);
 
     const handleSave = () => {
-        const newStart = parseFloat(localData.start) || 0;
-        const newEnd = parseFloat(localData.end) || 0;
+        const srtRegex = /^\d{2,}:\d{2}:\d{2},\d{3}$/;
+
+        if (!srtRegex.test(localData.start)) {
+            return toast.error("Invalid start timestamp. Please write in this format: 00:00:00,000");
+        }
+        if (!srtRegex.test(localData.end)) {
+            return toast.error("Invalid end timestamp. Please write in this format: 00:00:00,000");
+        }
+
+        const newStart = parseSRTTimestamp(localData.start);
+        const newEnd = parseSRTTimestamp(localData.end);
 
         if (newStart >= newEnd) {
             return toast.error("Start time must be before end time");
@@ -36,7 +49,7 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
 
         const conflict = hasOverlap(state.items, newStart, newEnd, sentence.id);
         if (conflict) {
-            return toast.error(`Time overlaps with another sentence: "${conflict.text.substring(0, 15)}..." (${conflict.start}s - ${conflict.end}s)`);
+            return toast.error(`Time overlaps with another sentence: "${conflict.text.substring(0, 15)}..." (${formatSRTTimestamp(conflict.start)} - ${formatSRTTimestamp(conflict.end)})`);
         }
 
         const updates = {
@@ -61,7 +74,11 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
         if (!sentence.text || sentence.text.trim() === '') {
             handleDelete();
         } else {
-            setLocalData({ text: sentence.text || '', start: sentence.start || 0, end: sentence.end || 0 });
+            setLocalData({
+                text: sentence.text || '',
+                start: formatSRTTimestamp(sentence.start || 0),
+                end: formatSRTTimestamp(sentence.end || 0)
+            });
             setIsEditing(false);
         }
     };
@@ -91,14 +108,12 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
                 {!isEditing ? (
                     <div className="flex items-start gap-2">
                         <div className="flex-1 text-slate-700 py-1">
-                            {/* Timestamp moved to the top */}
                             <div className="mb-1.5">
                                 <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                    {sentence.start}s - {sentence.end}s
+                                    {formatSRTTimestamp(sentence.start)} --&gt; {formatSRTTimestamp(sentence.end)}
                                 </span>
                             </div>
 
-                            {/* Text below the timestamp */}
                             <div className="leading-relaxed text-sm">
                                 {sentence.text || <span className="text-slate-400 italic">Empty sentence...</span>}
                             </div>
@@ -126,13 +141,13 @@ const Sentence = ({ sentence, sceneId = null, isNested = false, index = -1, onSe
                             <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
                                 <label>Start:</label>
                                 <Input
-                                    type="number" step="0.1" className="w-20 h-8 text-xs"
+                                    type="text" className="w-[110px] h-8 text-xs font-mono tracking-tighter"
                                     value={localData.start}
                                     onChange={(e) => setLocalData({ ...localData, start: e.target.value })}
                                 />
                                 <label className="ml-2">End:</label>
                                 <Input
-                                    type="number" step="0.1" className="w-20 h-8 text-xs"
+                                    type="text" className="w-[110px] h-8 text-xs font-mono tracking-tighter"
                                     value={localData.end}
                                     onChange={(e) => setLocalData({ ...localData, end: e.target.value })}
                                 />
