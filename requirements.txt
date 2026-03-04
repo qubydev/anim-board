@@ -3,5 +3,3 @@ uvicorn
 redis
 langchain-groq
 pillow
-numpy
-moviepy
