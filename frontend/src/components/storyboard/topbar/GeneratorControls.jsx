@@ -89,8 +89,7 @@ const GeneratorControls = () => {
 
             const payload = allSentences.map(s => {
                 return {
-                    text: s.text || '',
-                    duration: parseFloat((s.end - s.start).toFixed(2)) || 0
+                    text: s.text || ''
                 };
             });
 

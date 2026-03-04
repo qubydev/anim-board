@@ -1,10 +1,20 @@
+import sys
+import asyncio
+from pathlib import Path
+
+# --------------------------------------------------
+# Windows Asyncio Subprocess Fix
+# Must be called before the event loop starts
+# --------------------------------------------------
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pathlib import Path
 
 from routes import router
 from utils.helpers import error_response

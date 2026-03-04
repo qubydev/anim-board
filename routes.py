@@ -1,10 +1,14 @@
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from utils.llm import generate_scenes, generate_image_prompt, detect_characters
 from utils.whisk import generate_image, generate_image_with_chars, upload_image, WhiskError
+from utils.video import export_video_generator
 from typing import Literal, Optional, List
 from enum import Enum
+import json
+import os
+import tempfile
 
 router = APIRouter()
 
@@ -130,3 +134,23 @@ async def _upload_character_image(request: UploadImageRequest):
 async def _detect_characters(request: DetectedCharactersRequest):
     characters = detect_characters(request.title, request.lines)
     return {"characters": characters}
+
+@router.post("/export-video")
+async def _export_video(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        project_data = json.loads(contents)
+        
+        return StreamingResponse(
+            export_video_generator(project_data), 
+            media_type="text/event-stream"
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@router.get("/download-video/{filename}")
+async def _download_video(filename: str):
+    file_path = os.path.join(tempfile.gettempdir(), filename)
+    if not os.path.exists(file_path):
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    return FileResponse(file_path, media_type="video/mp4", filename="export.mp4")
