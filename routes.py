@@ -1,16 +1,17 @@
+import json
 from fastapi import APIRouter, UploadFile, File
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from utils.llm import generate_scenes, generate_image_prompt, detect_characters
 from utils.whisk import generate_image, generate_image_with_chars, upload_image, WhiskError
 from utils.video import export_video_generator
 from typing import Literal, Optional, List
 from enum import Enum
-import json
-import os
-import tempfile
 
 router = APIRouter()
+
+
+# ─── Pydantic models ────────────────────────────────────────────────────────
 
 class CharacterInput(BaseModel):
     name: str = Field(..., min_length=1, strip_whitespace=True)
@@ -61,6 +62,9 @@ class DetectedCharactersRequest(BaseModel):
     title: str
     lines: list[dict]
 
+
+# ─── Routes ─────────────────────────────────────────────────────────────────
+
 @router.post("/generate-image-prompt")
 async def _generate_image_prompt(request: ImagePromptRequest):
     data = generate_image_prompt(
@@ -72,10 +76,12 @@ async def _generate_image_prompt(request: ImagePromptRequest):
     )
     return JSONResponse(data)
 
+
 @router.post("/generate-scenes")
 async def _generate_scenes(request: GenerateScenesRequest):
     scenes = generate_scenes(request.title, request.lines)
     return JSONResponse({"scenes": scenes})
+
 
 @router.post("/generate-image")
 async def _generate_image(request: GenerateImageRequest):
@@ -92,6 +98,7 @@ async def _generate_image(request: GenerateImageRequest):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
 @router.post("/generate-image-chars")
 async def _generate_image_chars(request: GenerateImageCharsRequest):
     try:
@@ -104,7 +111,7 @@ async def _generate_image_chars(request: GenerateImageCharsRequest):
                     "mediaGenerationId": chr.mediaId
                 }
             })
-        
+
         data = generate_image_with_chars(
             prompt=request.prompt,
             recipe_media_inputs=formatted_characters,
@@ -116,6 +123,7 @@ async def _generate_image_chars(request: GenerateImageCharsRequest):
         return JSONResponse({"error": e.message, "refresh": e.refresh}, status_code=e.status_code)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
 
 @router.post("/upload-character-image")
 async def _upload_character_image(request: UploadImageRequest):
@@ -130,23 +138,54 @@ async def _upload_character_image(request: UploadImageRequest):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
 @router.post("/detect-characters")
 async def _detect_characters(request: DetectedCharactersRequest):
     characters = detect_characters(request.title, request.lines)
     return {"characters": characters}
 
+
 @router.post("/export-video")
-async def _export_video(file: UploadFile = File(...), audio: Optional[UploadFile] = File(None)):
+async def _export_video(
+    file: UploadFile = File(...),
+    audio: Optional[UploadFile] = File(None),
+):
+    """
+    Accepts a project JSON file + optional audio file via multipart/form-data.
+    Streams Server-Sent Events (SSE) with progress, then the final base64 MP4.
+
+    SSE event shapes:
+        data: {"status": "processing", "progress": <0-99>}
+        data: {"status": "done", "video_data": "<base64 mp4>"}
+        data: {"status": "error", "error": "<message>"}
+    """
+    json_bytes = await file.read()
     try:
-        contents = await file.read()
-        project_data = json.loads(contents)
-        
-        audio_bytes = await audio.read() if audio else None
-        audio_filename = audio.filename if audio else None
-        
-        return StreamingResponse(
-            export_video_generator(project_data, audio_bytes, audio_filename), 
-            media_type="text/event-stream"
-        )
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        project_json = json.loads(json_bytes)
+    except json.JSONDecodeError as e:
+        async def _err():
+            yield f'data: {json.dumps({"status": "error", "error": f"Invalid JSON: {e}"})}\n\n'
+        return StreamingResponse(_err(), media_type="text/event-stream")
+
+    audio_bytes = None
+    audio_filename = None
+    if audio is not None:
+        audio_bytes = await audio.read()
+        audio_filename = audio.filename
+
+    async def event_stream():
+        for event in export_video_generator(
+            project_json=project_json,
+            audio_bytes=audio_bytes,
+            audio_filename=audio_filename,
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

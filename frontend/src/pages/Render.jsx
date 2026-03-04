@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,13 +12,25 @@ export default function Render() {
     const [isExporting, setIsExporting] = useState(false)
     const [videoUrl, setVideoUrl] = useState(null)
 
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+    const abortControllerRef = useRef(null)
+
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || ''
+
+    useEffect(() => {
+        return () => {
+            if (videoUrl) {
+                URL.revokeObjectURL(videoUrl)
+            }
+        }
+    }, [videoUrl])
 
     const handleJsonChange = (e) => {
         const file = e.target.files[0]
         if (file && file.type === 'application/json') {
             setJsonFile(file)
             setVideoUrl(null)
+        } else {
+            toast.error('Please upload a valid JSON file')
         }
     }
 
@@ -26,90 +38,106 @@ export default function Render() {
         const file = e.target.files[0]
         if (file && file.type.startsWith('audio/')) {
             setAudioFile(file)
-        }
-    }
-
-    const handleExport = async () => {
-        if (!jsonFile) return;
-        setIsExporting(true);
-        setVideoUrl(null);
-
-        const toastId = toast.loading('Starting export...');
-        const formData = new FormData();
-        formData.append('file', jsonFile);
-        if (audioFile) {
-            formData.append('audio', audioFile);
-        }
-
-        try {
-            const response = await fetch(`${BACKEND_URL}/api/export-video`, {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) throw new Error("Connection failed");
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.trim().startsWith('data: ')) {
-                        const rawJson = line.replace('data: ', '').trim();
-                        if (!rawJson) continue;
-
-                        try {
-                            const data = JSON.parse(rawJson);
-
-                            if (data.error) throw new Error(data.error);
-
-                            if (data.status === 'processing') {
-                                toast.loading(`Exporting: ${data.progress}%`, { id: toastId });
-                            } else if (data.status === 'done') {
-                                toast.success('Video Ready!', { id: toastId });
-
-                                const base64Response = await fetch(`data:video/mp4;base64,${data.video_data}`);
-                                const blob = await base64Response.blob();
-                                const url = URL.createObjectURL(blob);
-
-                                setVideoUrl(url);
-                                setIsExporting(false);
-                                return;
-                            }
-                        } catch (e) {
-                            if (e.message !== "Unexpected end of JSON input" && !e.message.includes("Unexpected token")) {
-                                throw e;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            toast.error(error.message || "Export failed", { id: toastId });
-            setIsExporting(false);
+        } else {
+            toast.error('Please upload a valid audio file')
         }
     }
 
     const removeJson = () => setJsonFile(null)
     const removeAudio = () => setAudioFile(null)
 
+    const handleExport = async () => {
+        if (!jsonFile) return
+
+        setIsExporting(true)
+        setVideoUrl(null)
+
+        const toastId = toast.loading('Starting export...')
+
+        const formData = new FormData()
+        formData.append('file', jsonFile)
+        if (audioFile) {
+            formData.append('audio', audioFile)
+        }
+
+        try {
+            abortControllerRef.current = new AbortController()
+
+            const response = await fetch(`${BACKEND_URL}/api/export-video`, {
+                method: 'POST',
+                body: formData,
+                signal: abortControllerRef.current.signal
+            })
+
+            if (!response.ok) {
+                throw new Error('Connection failed')
+            }
+
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
+
+            while (true) {
+                const { value, done } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split('\n')
+                buffer = lines.pop()
+
+                for (const line of lines) {
+                    if (!line.trim().startsWith('data:')) continue
+
+                    const rawJson = line.replace('data:', '').trim()
+                    if (!rawJson) continue
+
+                    try {
+                        const data = JSON.parse(rawJson)
+
+                        if (data.error) {
+                            throw new Error(data.error)
+                        }
+
+                        if (data.status === 'processing') {
+                            toast.loading(`Exporting: ${data.progress}%`, { id: toastId })
+                        }
+
+                        if (data.status === 'done') {
+                            toast.success('Video Ready!', { id: toastId })
+
+                            const base64Response = await fetch(`data:video/mp4;base64,${data.video_data}`)
+                            const blob = await base64Response.blob()
+                            const url = URL.createObjectURL(blob)
+
+                            setVideoUrl(url)
+                            setIsExporting(false)
+                            return
+                        }
+                    } catch (err) {
+                        if (
+                            err.message !== 'Unexpected end of JSON input' &&
+                            !err.message.includes('Unexpected token')
+                        ) {
+                            throw err
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            toast.error(error.message || 'Export failed', { id: toastId })
+            setIsExporting(false)
+        }
+    }
+
     const handleDownload = () => {
-        if (!videoUrl) return;
-        const a = document.createElement('a');
-        a.href = videoUrl;
-        a.download = 'exported_project.mp4';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        if (!videoUrl) return
+
+        const a = document.createElement('a')
+        a.href = videoUrl
+        a.download = 'exported_project.mp4'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
     }
 
     return (
@@ -127,11 +155,15 @@ export default function Render() {
             <div className="flex flex-col items-center justify-center w-full max-w-lg">
                 <div className="flex items-center justify-center gap-3 mb-8">
                     <FaVideo className="h-6 w-6 text-primary" />
-                    <h1 className="text-lg font-semibold tracking-wide text-primary">RENDER PROJECT</h1>
+                    <h1 className="text-lg font-semibold tracking-wide text-primary">
+                        RENDER PROJECT
+                    </h1>
                 </div>
 
                 <Card className="w-full p-6 space-y-6 bg-white shadow-xl rounded-2xl border">
+
                     <div className="space-y-4">
+
                         <label
                             className={`group flex items-center justify-between gap-4 border-2 border-dashed rounded-lg px-5 py-4 cursor-pointer transition-all
                             ${jsonFile ? 'border-green-500 bg-green-50' : 'border-border hover:border-primary hover:bg-accent/40'}
@@ -140,8 +172,12 @@ export default function Render() {
                             <div className="flex items-center gap-4">
                                 <FaFileUpload className={`h-5 w-5 transition-colors ${jsonFile ? 'text-green-600' : 'text-muted-foreground group-hover:text-primary'}`} />
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-medium">{jsonFile ? jsonFile.name : 'Upload Project JSON'}</span>
-                                    <span className="text-xs text-muted-foreground tracking-tight">Required format</span>
+                                    <span className="text-sm font-medium">
+                                        {jsonFile ? jsonFile.name : 'Upload Project JSON'}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground tracking-tight">
+                                        Required format
+                                    </span>
                                 </div>
                             </div>
 
@@ -150,14 +186,23 @@ export default function Render() {
                                     type="button"
                                     size="icon"
                                     variant="ghost"
-                                    onClick={(e) => { e.preventDefault(); removeJson(); }}
+                                    onClick={(e) => {
+                                        e.preventDefault()
+                                        removeJson()
+                                    }}
                                     className="h-7 w-7 text-green-700 hover:text-red-500"
                                 >
                                     <FaTimes className="h-3 w-3" />
                                 </Button>
                             )}
 
-                            <input type="file" className="hidden" accept=".json" onChange={handleJsonChange} disabled={isExporting} />
+                            <input
+                                type="file"
+                                className="hidden"
+                                accept=".json"
+                                onChange={handleJsonChange}
+                                disabled={isExporting}
+                            />
                         </label>
 
                         <label
@@ -168,8 +213,12 @@ export default function Render() {
                             <div className="flex items-center gap-4">
                                 <FaMusic className={`h-5 w-5 transition-colors ${audioFile ? 'text-blue-600' : 'text-muted-foreground group-hover:text-primary'}`} />
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-medium">{audioFile ? audioFile.name : 'Upload Audio (Optional)'}</span>
-                                    <span className="text-xs text-muted-foreground tracking-tight">Voiceover or Background Music</span>
+                                    <span className="text-sm font-medium">
+                                        {audioFile ? audioFile.name : 'Upload Audio (Optional)'}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground tracking-tight">
+                                        Voiceover or Background Music
+                                    </span>
                                 </div>
                             </div>
 
@@ -178,14 +227,23 @@ export default function Render() {
                                     type="button"
                                     size="icon"
                                     variant="ghost"
-                                    onClick={(e) => { e.preventDefault(); removeAudio(); }}
+                                    onClick={(e) => {
+                                        e.preventDefault()
+                                        removeAudio()
+                                    }}
                                     className="h-7 w-7 text-blue-700 hover:text-red-500"
                                 >
                                     <FaTimes className="h-3 w-3" />
                                 </Button>
                             )}
 
-                            <input type="file" className="hidden" accept="audio/*" onChange={handleAudioChange} disabled={isExporting} />
+                            <input
+                                type="file"
+                                className="hidden"
+                                accept="audio/*"
+                                onChange={handleAudioChange}
+                                disabled={isExporting}
+                            />
                         </label>
 
                         <Button
@@ -193,20 +251,31 @@ export default function Render() {
                             disabled={!jsonFile || isExporting}
                             onClick={handleExport}
                         >
-                            {isExporting ? "Exporting Video..." : "🚀 Export Video"}
+                            {isExporting ? 'Exporting Video...' : '🚀 Export Video'}
                         </Button>
                     </div>
 
                     {videoUrl && (
                         <div className="pt-6 border-t space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="rounded-xl overflow-hidden shadow-2xl bg-black border aspect-video flex items-center justify-center">
-                                <video src={videoUrl} controls className="w-full h-full" />
+                                <video
+                                    src={videoUrl}
+                                    controls
+                                    className="w-full h-full"
+                                />
                             </div>
-                            <Button variant="outline" className="w-full h-11 border-primary/20 hover:bg-primary/5" onClick={handleDownload}>
-                                <FaDownload className="mr-2 h-4 w-4" /> Download MP4
+
+                            <Button
+                                variant="outline"
+                                className="w-full h-11 border-primary/20 hover:bg-primary/5"
+                                onClick={handleDownload}
+                            >
+                                <FaDownload className="mr-2 h-4 w-4" />
+                                Download MP4
                             </Button>
                         </div>
                     )}
+
                 </Card>
             </div>
         </div>

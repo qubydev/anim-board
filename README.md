@@ -37,7 +37,7 @@ pip install -r requirements.txt
 Install FFmpeg and verify:
 
 ```bash
-ffmpeg --version
+ffmpeg -version
 ```
 
 ---
