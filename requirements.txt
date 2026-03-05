@@ -2,4 +2,5 @@ fastapi[all]
 uvicorn
 redis
 langchain-groq
+langchain-openai
 pillow

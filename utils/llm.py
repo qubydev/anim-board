@@ -2,15 +2,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 import os
-import re
 from pydantic import BaseModel, Field
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+LONGCAT_API_KEY = os.getenv("LONGCAT_API_KEY")
 
-model = ChatGroq(
+model_main = ChatGroq(
     api_key=GROQ_API_KEY,
     model="llama-3.3-70b-versatile"
+)
+
+model_dumbass = ChatOpenAI(
+    base_url="https://api.longcat.chat/openai",
+    api_key=LONGCAT_API_KEY,
+    model="LongCat-Flash-Chat"
 )
 
 class ScenesWithIndexGroups(BaseModel):
@@ -25,6 +32,14 @@ class Character(BaseModel):
 
 class DetectedCharacters(BaseModel):
     characters: list[Character] = Field(..., description="A list of characters detected in the story.")
+
+class  TranscriptSentence(BaseModel):
+    text: str = Field(..., description="The text of the sentence.")
+    start: str = Field(..., description="The start timestamp of the sentence in the format 00:00:00,000")
+    end: str = Field(..., description="The end timestamp of the sentence in the format 00:00:00,000")
+
+class WordToSentenceTranscript(BaseModel):
+    sentences: list[TranscriptSentence] = Field(..., description="A list of sentences with their text and timestamps.")
 
 GENERATE_SCENES_SYSTEM = """You are a creative animator working on a story. Lines from a script with their indices are provided to you. Your task is to group these lines into scenes.
 
@@ -106,8 +121,17 @@ LINES:
 {formatted_lines}
 """
 
+WORD_TO_SENTENCE_TRANSCRIPT_SYSTEM = """You are a professional transcriptionist. A SRT file with word-level transcript is provided to you. Your task is to convert the word-level transcript into a sentence-level transcript. Each sentence should have its text, start timestamp and end timestamp.
+"""
+
+WORD_TO_SENTENCE_TRANSCRIPT_USER = """Please convert the following word-level transcript into a sentence-level transcript.
+
+WORD-LEVEL TRANSCRIPT:
+{word_level_transcript}
+"""
+
 def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
-    structured_model = model.with_structured_output(ScenesWithIndexGroups)
+    structured_model = model_main.with_structured_output(ScenesWithIndexGroups)
     formatted_lines = "\n".join([f"{i}: \"{line['text']}\"" for i, line in enumerate(lines)])
 
     response = structured_model.invoke([
@@ -117,7 +141,7 @@ def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
     return response.scenes
 
 def detect_characters(title: str, lines: list[dict]) -> list[Character]:
-    structured_model = model.with_structured_output(DetectedCharacters)
+    structured_model = model_main.with_structured_output(DetectedCharacters)
     formatted_lines = "\n".join([f"{line['text']}" for line in lines])
 
     response = structured_model.invoke([
@@ -151,7 +175,7 @@ def generate_image_prompt(
     if characters and len(characters) > 0:
         formatted_characters = "\n".join([f"[CH{i+1}]\n- Name: {c.name}\n- Description: {c.description}" for i, c in enumerate(characters)])
 
-    structured_model = model.with_structured_output(SceneImagePrompt)
+    structured_model = model_main.with_structured_output(SceneImagePrompt)
     response = structured_model.invoke([
         {"role": "system", "content": GENERATE_IMAGE_PROMPT_SYSTEM},
         {"role": "user", "content": GENERATE_IMAGE_PROMPT_USER.format(
@@ -163,3 +187,11 @@ def generate_image_prompt(
         )}
     ])
     return {"prompt": response.prompt}
+
+def word_to_sentence_transcript(word_level_transcript: str) -> list[TranscriptSentence]:
+    structured_model = model_main.with_structured_output(WordToSentenceTranscript)
+    response = structured_model.invoke([
+        {"role": "system", "content": WORD_TO_SENTENCE_TRANSCRIPT_SYSTEM},
+        {"role": "user", "content": WORD_TO_SENTENCE_TRANSCRIPT_USER.format(word_level_transcript=word_level_transcript)}
+    ])
+    return response.sentences
