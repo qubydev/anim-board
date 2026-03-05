@@ -122,6 +122,10 @@ LINES:
 """
 
 WORD_TO_SENTENCE_TRANSCRIPT_SYSTEM = """You are a professional transcriptionist. A SRT file with word-level transcript is provided to you. Your task is to convert the word-level transcript into a sentence-level transcript. Each sentence should have its text, start timestamp and end timestamp.
+
+RULES:
+- MUST NOT change any text of input words. You can only group them into sentences.
+- The start timestamp of a sentence should be the start timestamp of the first word in the sentence, and the end timestamp should be the end timestamp of the last word in the sentence.
 """
 
 WORD_TO_SENTENCE_TRANSCRIPT_USER = """Please convert the following word-level transcript into a sentence-level transcript.
