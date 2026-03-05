@@ -121,18 +121,20 @@ LINES:
 {formatted_lines}
 """
 
-WORD_TO_SENTENCE_TRANSCRIPT_SYSTEM = """You are a professional transcriptionist. A SRT file with word-level transcript is provided to you. Your task is to convert the word-level transcript into a sentence-level transcript. Each sentence should have its text, start timestamp and end timestamp.
+SMART_TRANSCRIPT_SYSTEM = """You are a professional transcriptionist. A sentence-level or word-level transcript SRT file is given to you. Your task is to process the data in the following way:
+- **SENTENCE-LEVEL**: You return the same sentence-level transcript without changing anything as you can not guess the timestamps of the words.
+- **WORD-LEVEL**: You convert the word-level transcript into a sentence-level transcript. Each sentence should have its text, start timestamp and end timestamp.
 
 RULES:
-- MUST NOT change any text of input words. You can only group them into sentences.
-- The start timestamp of a sentence should be the start timestamp of the first word in the sentence, and the end timestamp should be the end timestamp of the last word in the sentence.
-- If mistakenly a sentence level transcript provided, return the data as it is without changing.
+- MUST NOT change any text of input words.
+- For word-level transcript given, the start timestamp of a sentence should be the start timestamp of the first word in the sentence, and the end timestamp should be the end timestamp of the last word in the sentence.
+- Remove the ending exclamation mark from every sentence if there is any.
 """
 
-WORD_TO_SENTENCE_TRANSCRIPT_USER = """Please convert the following word-level transcript into a sentence-level transcript.
+SMART_TRANSCRIPT_USER = """Please process the following transcript:
 
-WORD-LEVEL TRANSCRIPT:
-{word_level_transcript}
+TRANSCRIPT SRT:
+{transcript}
 """
 
 def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
@@ -193,10 +195,10 @@ def generate_image_prompt(
     ])
     return {"prompt": response.prompt}
 
-def word_to_sentence_transcript(word_level_transcript: str) -> list[TranscriptSentence]:
+def smart_transcript(transcript: str) -> list[TranscriptSentence]:
     structured_model = model_main.with_structured_output(WordToSentenceTranscript)
     response = structured_model.invoke([
-        {"role": "system", "content": WORD_TO_SENTENCE_TRANSCRIPT_SYSTEM},
-        {"role": "user", "content": WORD_TO_SENTENCE_TRANSCRIPT_USER.format(word_level_transcript=word_level_transcript)}
+        {"role": "system", "content": SMART_TRANSCRIPT_SYSTEM},
+        {"role": "user", "content": SMART_TRANSCRIPT_USER.format(transcript=transcript)}
     ])
     return response.sentences

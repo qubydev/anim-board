@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from utils.llm import generate_scenes, generate_image_prompt, detect_characters, word_to_sentence_transcript
+from utils.llm import generate_scenes, generate_image_prompt, detect_characters, smart_transcript
 from utils.whisk import generate_image, generate_image_with_chars, upload_image, WhiskError
 from utils.video import export_video_generator
 from typing import Literal, Optional, List
@@ -62,8 +62,8 @@ class DetectedCharactersRequest(BaseModel):
     title: str
     lines: list[dict]
 
-class WordToSentenceTranscriptRequest(BaseModel):
-    word_level_transcript: str
+class SmartTranscriptRequest(BaseModel):
+    transcript: str
 
 
 # ─── Routes ─────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ async def _export_video(
         },
     )
 
-@router.post("/word-to-sentence-transcript")
-async def _word_to_sentence_transcript(request: WordToSentenceTranscriptRequest):
-    sentences = word_to_sentence_transcript(request.word_level_transcript)
+@router.post("/smart-transcript")
+async def _smart_transcript(request: SmartTranscriptRequest):
+    sentences = smart_transcript(request.transcript)
     return {"sentences": sentences}

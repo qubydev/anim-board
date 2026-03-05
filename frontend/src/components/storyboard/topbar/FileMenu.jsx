@@ -3,7 +3,7 @@ import { useStoryBoard } from '../../../context/StoryBoardContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FaDownload, FaUpload, FaEraser, FaSpinner, FaFileAlt, FaStream } from 'react-icons/fa';
+import { FaDownload, FaUpload, FaEraser, FaSpinner, FaProjectDiagram, FaFileAlt, FaBrain } from 'react-icons/fa';
 import { parseTranscript, formatSRTTimestamp, parseSRTTimestamp } from '../../../lib/storyboard-utils';
 import toast from 'react-hot-toast';
 
@@ -11,8 +11,8 @@ const FileMenu = () => {
     const { state, dispatch } = useStoryBoard();
 
     const projectInputRef = React.useRef(null);
-    const sentenceTranscriptRef = React.useRef(null);
-    const wordTranscriptRef = React.useRef(null);
+    const transcriptInputRef = React.useRef(null);
+    const smartTranscriptInputRef = React.useRef(null);
 
     const handleExport = () => {
         const exportState = {
@@ -48,7 +48,7 @@ const FileMenu = () => {
         toast.success("Project exported");
     };
 
-    const handleProjectImport = (e) => {
+    const handleStoryboardImport = (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -124,7 +124,7 @@ const FileMenu = () => {
         reader.readAsText(file);
     };
 
-    const handleWordTranscriptImport = async (e) => {
+    const handleSmartTranscriptImport = (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -136,38 +136,23 @@ const FileMenu = () => {
         const reader = new FileReader();
 
         reader.onload = async (event) => {
-            const loadingToast = toast.loading("Analyzing word-level transcript with AI...");
+            const loadingToast = toast.loading("Analyzing transcript with AI...");
 
             try {
                 const srtData = event.target.result;
 
-                const blocks = srtData.trim().split(/\n\s*\n/);
-
-                const isWordLevel = blocks.some(block => {
-                    const lines = block.split('\n');
-                    if (lines.length < 3) return false;
-                    const text = lines.slice(2).join(' ').trim();
-                    return text.split(/\s+/).length === 1;
-                });
-
-                if (!isWordLevel) {
-                    toast.dismiss(loadingToast);
-                    toast.error("File does not appear to be a word-level SRT transcript");
-                    return;
-                }
-
-                const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/word-to-sentence-transcript`, {
+                const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/smart-transcript`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify({
-                        word_level_transcript: srtData
+                        transcript: srtData
                     })
                 });
 
                 if (!response.ok) {
-                    throw new Error("Failed to process word transcript");
+                    throw new Error("Failed to process transcript");
                 }
 
                 const data = await response.json();
@@ -217,18 +202,18 @@ const FileMenu = () => {
 
                 <DropdownMenuContent align="start">
                     <DropdownMenuItem onClick={() => projectInputRef.current.click()}>
-                        <FaFileAlt className="mr-2" />
-                        Import Story Board
+                        <FaProjectDiagram className="mr-2 text-purple-500" />
+                        Storyboard
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => sentenceTranscriptRef.current.click()}>
-                        <FaStream className="mr-2" />
-                        Sentence Level Transcript
+                    <DropdownMenuItem onClick={() => transcriptInputRef.current.click()}>
+                        <FaFileAlt className="mr-2 text-blue-500" />
+                        Transcript
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => wordTranscriptRef.current.click()}>
-                        <FaStream className="mr-2" />
-                        Word Level Transcript <span className="text-blue-500 font-bold bg-blue-500/10 px-1 rounded-sm">AI</span>
+                    <DropdownMenuItem onClick={() => smartTranscriptInputRef.current.click()}>
+                        <FaBrain className="mr-2 text-emerald-500" />
+                        Smart Transcript
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -238,12 +223,12 @@ const FileMenu = () => {
                 type="file"
                 hidden
                 accept=".json"
-                onChange={handleProjectImport}
+                onChange={handleStoryboardImport}
                 onClick={(e) => (e.target.value = null)}
             />
 
             <input
-                ref={sentenceTranscriptRef}
+                ref={transcriptInputRef}
                 type="file"
                 hidden
                 accept=".srt"
@@ -252,11 +237,11 @@ const FileMenu = () => {
             />
 
             <input
-                ref={wordTranscriptRef}
+                ref={smartTranscriptInputRef}
                 type="file"
                 hidden
                 accept=".srt"
-                onChange={handleWordTranscriptImport}
+                onChange={handleSmartTranscriptImport}
                 onClick={(e) => (e.target.value = null)}
             />
 
