@@ -90,3 +90,6 @@ pylint.log
 uploads/
 outputs/
 models/
+
+# Custom files
+test.py
