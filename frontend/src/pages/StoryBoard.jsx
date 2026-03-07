@@ -5,7 +5,7 @@ import Scene from '../components/storyboard/Scene';
 import Sentence from '../components/storyboard/Sentence';
 import CharactersSection from '../components/storyboard/CharactersSection';
 import { Button } from '@/components/ui/button';
-import { FaPlus, FaVideo } from 'react-icons/fa';
+import { FaPlus } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 
 const StoryBoardInner = () => {
@@ -101,27 +101,6 @@ const StoryBoardInner = () => {
                     </div>
                 )}
             </main>
-
-            <Button
-                onClick={() => navigate('/render')}
-                size="icon"
-                variant="secondary"
-                title="Render Video"
-                className="
-        fixed bottom-6 right-6
-        h-12 w-12
-        rounded-full
-        bg-card
-        border
-        shadow-lg
-        hover:shadow-xl
-        hover:bg-accent
-        transition-all
-        duration-200
-    "
-            >
-                <FaVideo className="h-5 w-5 text-primary" />
-            </Button>
         </div>
     );
 };

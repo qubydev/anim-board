@@ -6,6 +6,7 @@ import StatsDisplay from './topbar/StatsDisplay';
 import GeneratorControls from './topbar/GeneratorControls';
 import { GlobalSettings } from './topbar/GlobalSettings';
 import SuperMenu from './topbar/SuperMenu';
+import { Link } from 'react-router-dom';
 
 const TopBar = () => {
     const { state, dispatch } = useStoryBoard();
@@ -17,7 +18,9 @@ const TopBar = () => {
                 {/* ROW 1: Title & File Menu + Settings + SuperMenu */}
                 <div className="flex flex-wrap items-center justify-between gap-y-3">
                     <div className="flex items-center gap-4">
-                        <img src="/logo.svg" alt="Logo" className="size-12" />
+                        <Link to="/">
+                            <img src="/logo.svg" alt="Logo" className="size-12" />
+                        </Link>
                         <Input
                             value={state.title}
                             onChange={(e) => dispatch({ type: 'UPDATE_TITLE', payload: e.target.value })}
