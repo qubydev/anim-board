@@ -278,7 +278,6 @@ const CharactersSection = () => {
             <div className="flex items-center justify-between px-1 border-b border-slate-200 pb-2">
                 <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
                     Characters
-                    <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">{characters.length}</span>
                 </h3>
                 <Button variant="ghost" size="sm" onClick={handleAdd} className="h-7 text-xs text-primary hover:bg-primary/10 border border-primary/20">
                     <FaUserPlus className="mr-2" /> Add Character
