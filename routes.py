@@ -22,14 +22,14 @@ class Scene(BaseModel):
     prompt: str = Field(..., min_length=1, strip_whitespace=True)
 
 class ImagePromptRequest(BaseModel):
-    title: str
-    scene_lines: str
+    title: str = Field(..., min_length=1, strip_whitespace=True)
+    scene_lines: str = Field(..., min_length=1, strip_whitespace=True)
     previous_scenes: Optional[List[Scene]] = None
     characters: Optional[List[CharacterInput]] = None
     instructions: Optional[str] = None
 
 class GenerateScenesRequest(BaseModel):
-    title: str
+    title: str = Field(..., min_length=1, strip_whitespace=True)
     lines: list[dict]
 
 class ImageAspectRatio(str, Enum):
