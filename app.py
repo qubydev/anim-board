@@ -27,7 +27,7 @@ app = FastAPI(title="StoryBird API")
 # --------------------------------------------------
 # CORS
 # --------------------------------------------------
-frontend_ports = [4173, 5173, 3000]
+frontend_ports = [4173, 5173, 3000, 8000]
 
 origins = [f"http://localhost:{port}" for port in frontend_ports] + [
     f"http://127.0.0.1:{port}" for port in frontend_ports

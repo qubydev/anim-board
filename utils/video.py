@@ -2,12 +2,21 @@ import base64
 import os
 import subprocess
 import tempfile
+import logging
 from pathlib import Path
 from typing import Optional, Generator
 from PIL import Image
 import io
 
-# ── Global export settings ────────────────────────────────────────────────────
+# ── Logging Setup ────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
+)
+logger = logging.getLogger(__name__)
+
+# ── Global export settings ───────────────────────────────────────────────────
 WIDTH         = 1920
 HEIGHT        = 1080
 FPS           = 25           # zoompan works best at 25fps
@@ -109,7 +118,19 @@ def _make_kenburns_filter(duration: float, zoom_in: bool) -> str:
     )
 
 
-def _render_scene_clip(img_path: str, duration: float, zoom_in: bool, output_path: str):
+def _run_ffmpeg(cmd: list, step_name: str) -> Optional[str]:
+    """Helper to run ffmpeg and return errors if any, without spamming the console."""
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    if r.returncode != 0:
+        err_msg = r.stderr.decode("utf-8", errors="replace")
+        logger.error(f"[{step_name}] FAILED:\n{err_msg}")
+        return err_msg
+    
+    return None
+
+
+def _render_scene_clip(img_path: str, duration: float, zoom_in: bool, output_path: str, scene_idx: int):
     """Render one scene image to an MP4 clip with Ken Burns. Returns stderr or None."""
     vf  = _make_kenburns_filter(duration, zoom_in)
     cmd = [
@@ -120,8 +141,7 @@ def _render_scene_clip(img_path: str, duration: float, zoom_in: bool, output_pat
         "-c:v", VIDEO_CODEC, "-preset", PRESET, "-crf", str(CRF),
         "-an", output_path,
     ]
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return None if r.returncode == 0 else r.stderr.decode("utf-8", errors="replace")
+    return _run_ffmpeg(cmd, f"Scene {scene_idx} Render")
 
 
 def export_video_generator(
@@ -132,18 +152,26 @@ def export_video_generator(
     try:
         scenes = [s for s in project_json.get("items", []) if s.get("type") == "scene"]
         if not scenes:
-            yield {"status": "error", "error": "No scenes found in project file."}
+            err_msg = "No scenes found in project file."
+            logger.error(err_msg)
+            yield {"status": "error", "error": err_msg}
             return
 
         total       = len(scenes)
         scene_times = _compute_scene_durations(scenes)
+        
+        msg = f"Starting video export: {total} scenes total."
+        logger.info(msg)
+        yield {"status": "processing", "message": msg}
 
         with tempfile.TemporaryDirectory() as tmpdir:
 
             # ── 1. Render each scene clip ─────────────────────────────────
             clip_paths = []
             for idx, scene in enumerate(scenes):
-                yield {"status": "processing", "progress": int((idx / total) * 75)}
+                msg = f"Processing Scene {idx + 1}/{total}..."
+                logger.info(msg)
+                yield {"status": "processing", "message": msg}
 
                 t0, t1   = scene_times[idx]
                 duration = max(t1 - t0, 0.5)
@@ -164,7 +192,7 @@ def export_video_generator(
                 clip_path = os.path.join(tmpdir, f"clip_{idx:04d}.mp4")
 
                 if ZOOM_PER_SEC > 0:
-                    err = _render_scene_clip(img_path, duration, zoom_in, clip_path)
+                    err = _render_scene_clip(img_path, duration, zoom_in, clip_path, idx)
                     if err:
                         yield {"status": "error", "error": f"ffmpeg scene {idx} failed:\n{err}"}
                         return
@@ -177,34 +205,40 @@ def export_video_generator(
                         "-c:v", VIDEO_CODEC, "-preset", PRESET, "-crf", str(CRF),
                         "-an", clip_path,
                     ]
-                    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    if r.returncode != 0:
-                        yield {"status": "error", "error": r.stderr.decode("utf-8", errors="replace")}
+                    err = _run_ffmpeg(cmd, f"Scene {idx} Static Render")
+                    if err:
+                        yield {"status": "error", "error": err}
                         return
 
                 clip_paths.append(clip_path)
 
-            yield {"status": "processing", "progress": 80}
-
             # ── 2. Concat list ────────────────────────────────────────────
+            msg = "Generating concat file..."
+            logger.info(msg)
+            yield {"status": "processing", "message": msg}
+            
             concat_path = os.path.join(tmpdir, "concat.txt")
             with open(concat_path, "w") as f:
                 for cp in clip_paths:
                     f.write(f"file '{cp}'\n")
 
-            yield {"status": "processing", "progress": 83}
-
             # ── 3. Save audio ─────────────────────────────────────────────
             audio_path = None
             if audio_bytes:
+                msg = "Saving audio track..."
+                logger.info(msg)
+                yield {"status": "processing", "message": msg}
+                
                 ext = Path(audio_filename).suffix if audio_filename else ".mp3"
                 audio_path = os.path.join(tmpdir, f"audio{ext}")
                 with open(audio_path, "wb") as f:
                     f.write(audio_bytes)
 
-            yield {"status": "processing", "progress": 86}
-
             # ── 4. Final concat + mux ─────────────────────────────────────
+            msg = "Running final concatenation and muxing..."
+            logger.info(msg)
+            yield {"status": "processing", "message": msg}
+            
             output_path = os.path.join(tmpdir, "output.mp4")
             cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_path]
             if audio_path:
@@ -214,19 +248,25 @@ def export_video_generator(
                 cmd += ["-c:a", AUDIO_CODEC, "-b:a", AUDIO_BITRATE]
             cmd.append(output_path)
 
-            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if r.returncode != 0:
-                yield {"status": "error", "error": f"ffmpeg concat failed:\n{r.stderr.decode('utf-8', errors='replace')}"}
+            err = _run_ffmpeg(cmd, "Final Concat/Mux")
+            if err:
+                yield {"status": "error", "error": f"ffmpeg concat failed:\n{err}"}
                 return
 
-            yield {"status": "processing", "progress": 97}
-
             # ── 5. Return base64 video ────────────────────────────────────
+            msg = "Encoding final video to base64..."
+            logger.info(msg)
+            yield {"status": "processing", "message": msg}
+            
             with open(output_path, "rb") as f:
                 video_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-        yield {"status": "done", "video_data": video_b64}
+        msg = "Export completed successfully!"
+        logger.info(msg)
+        yield {"status": "done", "message": msg, "video_data": video_b64}
 
     except Exception as e:
         import traceback
-        yield {"status": "error", "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}"}
+        err_trace = traceback.format_exc()
+        logger.error(f"Export crashed: {type(e).__name__}: {e}\n{err_trace}")
+        yield {"status": "error", "error": f"{type(e).__name__}: {e}\n{err_trace}"}

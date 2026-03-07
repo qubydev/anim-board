@@ -98,9 +98,12 @@ export default function Render() {
                             throw new Error(data.error)
                         }
 
+                        // ── THIS IS THE FIX ──────────────────────────────────────
+                        // Now we use data.message instead of data.progress
                         if (data.status === 'processing') {
-                            toast.loading(`Exporting: ${data.progress}%`, { id: toastId })
+                            toast.loading(data.message || 'Processing...', { id: toastId })
                         }
+                        // ─────────────────────────────────────────────────────────
 
                         if (data.status === 'done') {
                             toast.success('Video Ready!', { id: toastId })
