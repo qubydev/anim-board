@@ -117,15 +117,6 @@ export const fileToBase64 = (file) => {
     });
 };
 
-export const getStorageItem = (key) => {
-    try {
-        const item = localStorage.getItem(key);
-        return item ? JSON.parse(item) : { text: '', enabled: true };
-    } catch (e) {
-        return { text: '', enabled: true };
-    }
-};
-
 // IndexedDB Setup for large project files
 const initDB = () => {
     return new Promise((resolve, reject) => {
@@ -258,11 +249,6 @@ export const parseTranscript = (content, filename) => {
     }
 
     return sentences;
-};
-
-export const refreshSessionKey = () => {
-    localStorage.removeItem('sb_global_session_key');
-    window.dispatchEvent(new Event('session_key_changed'));
 };
 
 export const formatSRTTimestamp = (seconds) => {

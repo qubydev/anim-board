@@ -3,10 +3,12 @@ import { useStoryBoard } from '../../../context/StoryBoardContext';
 import { Button } from '@/components/ui/button';
 import { FaMagic, FaSpinner, FaPenFancy, FaImages, FaStop, FaUsers } from 'react-icons/fa';
 import toast from 'react-hot-toast';
-import { getStorageItem, refreshSessionKey } from '../../../lib/storyboard-utils';
+import { useSettings } from '@/context/SettingsContext';
 
 const GeneratorControls = () => {
     const { state, dispatch } = useStoryBoard();
+    const { sessionKey, setSessionKey, instructions } = useSettings();
+
     const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
     const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
     const [isGeneratingAllImages, setIsGeneratingAllImages] = useState(false);
@@ -132,8 +134,6 @@ const GeneratorControls = () => {
             return;
         }
 
-        const instData = getStorageItem('sb_global_instructions');
-
         const activeCharacters = (state.characters || []).filter(c => c.mediaId);
         // Prompt generation only needs name and description
         const charactersPayload = activeCharacters.length > 0 ? activeCharacters.map(c => ({
@@ -185,7 +185,7 @@ const GeneratorControls = () => {
                         body: JSON.stringify({
                             title: state.title || 'Untitled',
                             scene_lines: sceneText,
-                            instructions: instData.text ? instData.text : null,
+                            instructions: instructions || '',
                             previous_scenes: previousScenesList.length > 0 ? previousScenesList : null,
                             characters: charactersPayload
                         }),
@@ -265,8 +265,7 @@ const GeneratorControls = () => {
             return;
         }
 
-        const sessionData = getStorageItem('sb_global_session_key');
-        if (!sessionData.text) {
+        if (!sessionKey) {
             return toast.error("Session Key is missing. Please add it in Global Settings.");
         }
 
@@ -353,7 +352,7 @@ const GeneratorControls = () => {
                         let endpoint = `${backendUrl}/api/generate-image`;
                         let reqBody = {
                             prompt: scene.prompt,
-                            session_token: sessionData.text,
+                            session_token: sessionKey
                         };
 
                         if (subjectIds.length > 0) {
@@ -378,7 +377,9 @@ const GeneratorControls = () => {
 
                         if (!res.ok) {
                             const err = await res.json().catch(() => ({}));
-                            if (err.refresh) refreshSessionKey();
+                            if (err.refresh) {
+                                setSessionKey('');
+                            }
                             throw new Error(err.error || "Failed to generate image");
                         }
 

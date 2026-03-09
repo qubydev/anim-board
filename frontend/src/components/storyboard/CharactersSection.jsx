@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogFooter } from '@/components/ui/dialog';
 import { FaUserPlus, FaTrash, FaUpload, FaUserCircle, FaEdit, FaSpinner } from 'react-icons/fa';
-import { fileToBase64, getStorageItem, refreshSessionKey } from '../../lib/storyboard-utils';
+import { fileToBase64 } from '../../lib/storyboard-utils';
 import toast from 'react-hot-toast';
 import { useSettings } from '@/context/SettingsContext';
 
@@ -13,7 +13,7 @@ const CharacterCard = ({ character, index, dispatch }) => {
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isUploadingEdit, setIsUploadingEdit] = useState(false);
     const [isUploadingDirect, setIsUploadingDirect] = useState(false);
-    const { sessionKey } = useSettings();
+    const { sessionKey, setSessionKey } = useSettings();
 
     const [editState, setEditState] = useState({
         name: '',
@@ -64,7 +64,9 @@ const CharacterCard = ({ character, index, dispatch }) => {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            if (err.refresh) refreshSessionKey();
+            if (err.refresh) {
+                setSessionKey('');
+            }
             throw new Error(err.error || err.message || "Upload failed");
         }
 

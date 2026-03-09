@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStoryBoard } from '../../context/StoryBoardContext';
-import { getSceneDuration, fileToBase64, getStorageItem, refreshSessionKey, formatSRTTimestamp } from '../../lib/storyboard-utils';
+import { getSceneDuration, fileToBase64, formatSRTTimestamp } from '../../lib/storyboard-utils';
 import Sentence from './Sentence';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
