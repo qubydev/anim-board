@@ -65,13 +65,12 @@ class SentenceTranscript(BaseModel):
 
 # --- Prompts ---
 
-GENERATE_SCENES_SYSTEM = """You are an expert Storyboard Artist and Cinematographer. You are provided with script lines, their indices, and their audio durations. Your task is to group these lines into logical visual scenes (shots) that will each be represented by a single static image.
+GENERATE_SCENES_SYSTEM = """You are an expert Storyboard Artist and Cinematographer. You are provided with script lines, their indices, and their audio durations. Your task is to group these lines into small groups (scenes) that can be visually represented together in a single image.
 
-RULES:
-1. SCENE DEFINITION: A group of lines representing a similar meaning, such that they could be visually represented together in a single image. Lines that differ significantly in meaning, location, or characters should be in separate scenes.
-2. TARGET DURATION: Group lines together so the cumulative duration of each scene is approximately 4 to 6 seconds. 
-3. LONG LINES: If a single line's duration exceeds 6 seconds, isolate it into its own scene. Do not group other lines with it.
-4. VISUAL COHESION: Group lines that naturally occur in the same shot (e.g., same location, same characters interacting).
+STRICT RULES:
+1. Strictly try to keep cumulative duration of each scene around 5 seconds. (**DO NOT EXCEED THE LIMIT**)
+2. Do not group more than 3 lines together in a single scene, even if the lines are representing the same scene.
+3. For longer lines with more than 5 seconds duration, create a scene with just that one line. Do not group it with other lines, even if they are visually related.
 """
 
 GENERATE_SCENES_USER = """Generate storyboard scenes for the following script:
@@ -157,15 +156,22 @@ SMART_TRANSCRIPT_USER = """Process the following transcript into sentence-level 
 """
 
 # --- Functions ---
+def format_duration(d):
+    return f"{d:.2f}".rstrip("0").rstrip(".")
 
 def generate_scenes(title: str, lines: list[dict]) -> list[list[int]]:
     structured_model = model_base.with_structured_output(ScenesWithIndexGroups)
-    formatted_lines = "\n".join([f"{i}: \"{line['text']}\" ({line['duration']}s)" for i, line in enumerate(lines)])
+
+    formatted_lines = "\n".join(
+        [f'{i}: {line["text"]} ({format_duration(line["duration"])}s)'
+         for i, line in enumerate(lines)]
+    )
 
     response = structured_model.invoke([
         {"role": "system", "content": GENERATE_SCENES_SYSTEM},
         {"role": "user", "content": GENERATE_SCENES_USER.format(title=title, formatted_lines=formatted_lines)}
     ])
+
     return response.scenes
 
 def detect_characters(title: str, lines: list[dict]) -> list[Character]:
@@ -203,7 +209,7 @@ def generate_image_prompt(
     if characters and len(characters) > 0:
         formatted_characters = "\n".join([f"[CH{i+1}]\n- Name: {c.name}\n- Description: {c.description}" for i, c in enumerate(characters)])
 
-    structured_model = model_base.with_structured_output(SceneImagePrompt)
+    structured_model = model_pro.with_structured_output(SceneImagePrompt)
     response = structured_model.invoke([
         {"role": "system", "content": GENERATE_IMAGE_PROMPT_SYSTEM},
         {"role": "user", "content": GENERATE_IMAGE_PROMPT_USER.format(

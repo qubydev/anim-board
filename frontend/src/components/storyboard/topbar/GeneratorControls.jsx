@@ -20,6 +20,11 @@ const GeneratorControls = () => {
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     const handleDetectCharacters = async () => {
+        if (!state.title?.trim() || state.title.trim() === 'Untitled') {
+            toast.error("Please enter a title to get the best results.");
+            return;
+        }
+
         setIsDetectingChars(true);
         const toastId = toast.loading("Detecting characters from script...");
 
@@ -38,7 +43,7 @@ const GeneratorControls = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title: state.title || 'Untitled',
+                    title: state.title,
                     lines: payload
                 })
             });
@@ -148,9 +153,12 @@ const GeneratorControls = () => {
         const signal = promptAbortControllerRef.current.signal;
 
         const scenesToProcess = state.items.filter(item => item.type === 'scene');
+        const totalScenes = scenesToProcess.length;
+
         try {
             let scenesProcessed = 0;
             let scenesSkipped = 0;
+            let currentIndex = 0;
             let previousScenesList = [];
 
             for (let i = 0; i < scenesToProcess.length; i++) {
@@ -160,6 +168,7 @@ const GeneratorControls = () => {
 
                 if (item.prompt && item.prompt.trim().length > 0) {
                     scenesSkipped++;
+                    currentIndex++;
                     if (sceneText) {
                         previousScenesList.push({ scene_lines: sceneText, prompt: item.prompt });
                         if (previousScenesList.length > 10) previousScenesList.shift();
@@ -169,6 +178,7 @@ const GeneratorControls = () => {
 
                 if (!sceneText) {
                     scenesSkipped++;
+                    currentIndex++;
                     continue;
                 }
 
@@ -178,6 +188,9 @@ const GeneratorControls = () => {
                     if (!state.title.trim() || state.title.trim() === 'Untitled') {
                         return toast.error("Please provide a title for your storyboard to get the best results.", { id: toastId });
                     }
+
+                    currentIndex++;
+                    toast.loading(`Generating prompts... (${currentIndex}/${totalScenes})`, { id: toastId });
 
                     const res = await fetch(`${backendUrl}/api/generate-image-prompt`, {
                         method: 'POST',

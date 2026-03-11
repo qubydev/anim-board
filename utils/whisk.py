@@ -216,8 +216,6 @@ def generate_image_with_chars(
         json=payload,
     )
 
-    print("Image recipe response:", response.status_code, response.text)
-
     if not response.ok:
         try:
             error_data = response.json()
